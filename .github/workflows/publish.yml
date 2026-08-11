@@ -1,0 +1,85 @@
+name: Collect and publish dashboard
+
+# Runs the whole tracker on GitHub's machines and publishes the result to
+# GitHub Pages, so the dashboard stays current without anyone installing Node,
+# running a terminal, or keeping a machine switched on.
+
+on:
+  schedule:
+    # Every six hours. RSS feeds only carry a day or two, so collecting on a
+    # cadence is what builds the history the trend views need.
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # adds a "Run workflow" button in the Actions tab
+  push:
+    branches: [claude/dutch-soccer-sentiment-s3xsr8]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two runs collect into the same cache at once.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # The SQLite file carries every document collected so far. Without this
+      # each run would start empty and the dashboard could never show more than
+      # the last day or two that the feeds still list.
+      - name: Restore collected history
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: sentiment-db-${{ github.run_id }}
+          restore-keys: sentiment-db-
+
+      - run: npm ci
+
+      - name: Collect fixtures and documents
+        run: |
+          npm run fixtures
+          npm run collect -- --days 7
+
+      - name: Check sentiment alerts
+        # Optional: set ALERT_WEBHOOK_URL in repository secrets for Slack/Discord.
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: npm run alerts
+        continue-on-error: true
+
+      - name: Build the standalone dashboard
+        run: |
+          npm run export -- --out dist/index.html
+          cp dist/index.html dist/stemming.html
+
+      - name: Save collected history
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data
+          key: sentiment-db-${{ github.run_id }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

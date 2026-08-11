@@ -6,7 +6,28 @@ results, and serving an interactive dashboard.
 
 ---
 
-## Run it
+## Easiest: don't install anything
+
+**Just want to look at it?** Open `dist/stemming.html` in any browser. It is the entire
+dashboard in one self-contained file — no install, no terminal, no server. Ask whoever set
+this up for a copy, or produce one with `npm run export`.
+
+**Want it to stay current, still without installing anything?** Fork this repo and let
+GitHub run it for you:
+
+1. Fork the repo on GitHub.
+2. Go to **Settings → Pages** and set *Source* to **GitHub Actions**.
+3. Go to **Actions**, pick *Collect and publish dashboard*, click **Run workflow**.
+
+That's it. GitHub collects the data on its own machines every six hours and publishes the
+dashboard at `https://<your-username>.github.io/SoccerSentimentTracker/`. Nothing runs on
+your computer, ever. The workflow is `.github/workflows/publish.yml`.
+
+Everything below is for running it locally instead.
+
+---
+
+## Run it locally
 
 You need [Node.js 20 or newer](https://nodejs.org). Nothing else — no API keys, no database
 to install, no accounts.
