@@ -91,6 +91,24 @@ test('detects the newly added clubs', () => {
   }
 });
 
+test('no club points at a subreddit that is not about football', () => {
+  // r/Ajax is the town of Ajax, Ontario. Pointing the collector at it filled
+  // Ajax's sentiment with Canadian municipal chatter — grocery-store deals and
+  // garage-door recommendations scored as fan mood. The club subreddit is
+  // r/AjaxAmsterdam. This is a config trap that reads as correct, so it gets a
+  // test rather than a comment alone.
+  const wrong = new Map([['Ajax', 'AjaxAmsterdam']]);
+
+  for (const club of CLUBS) {
+    for (const subreddit of club.subreddits) {
+      assert.ok(
+        !wrong.has(subreddit),
+        `${club.id} points at r/${subreddit}, which is not the club — use r/${wrong.get(subreddit)}`,
+      );
+    }
+  }
+});
+
 /* ---------------------------------------------------------------- fixtures */
 
 test('derives the football season from the date', () => {

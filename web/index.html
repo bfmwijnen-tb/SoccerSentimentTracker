@@ -93,18 +93,33 @@
                   Elke lijn is één club. <b>Boven de nullijn</b> wordt er overwegend positief
                   geschreven, <b>eronder</b> overwegend negatief; de grijze band in het midden is
                   neutraal. Stippen op de as zijn wedstrijddagen — hover voor de uitslag.
+                  <br />
+                  <b>Periode</b> bepaalt hoe ver de grafiek terugkijkt. <b>Afvlakking</b> verandert
+                  alleen hoe glad de lijn loopt — een korte afvlakking toont elke dagelijkse piek,
+                  een lange laat de onderliggende trend zien.
                 </p>
               </div>
-              <div class="control-group">
-                <span class="control-label">Vloeiend</span>
-                <button class="chip sm" data-smooth="1">Ruw</button>
-                <button class="chip sm" data-smooth="3" aria-pressed="true">3d</button>
-                <button class="chip sm" data-smooth="7">7d</button>
-                <button class="chip sm" data-smooth="14">14d</button>
+              <div class="chart-controls">
+                <div class="control-group">
+                  <span class="control-label">Periode</span>
+                  <button class="chip sm" data-days="7">7d</button>
+                  <button class="chip sm" data-days="30" aria-pressed="true">30d</button>
+                  <button class="chip sm" data-days="90">3 mnd</button>
+                  <button class="chip sm" data-days="180">6 mnd</button>
+                  <button class="chip sm" data-days="365">Seizoen</button>
+                </div>
+                <div class="control-group">
+                  <span class="control-label" title="Verandert alleen hoe glad de lijn is, niet welke periode je ziet">Afvlakking</span>
+                  <button class="chip sm" data-smooth="1">Ruw</button>
+                  <button class="chip sm" data-smooth="3" aria-pressed="true">3d</button>
+                  <button class="chip sm" data-smooth="7">7d</button>
+                  <button class="chip sm" data-smooth="14">14d</button>
+                </div>
               </div>
             </header>
             <div class="chart-wrap" id="timeline"></div>
             <div class="legend" id="timeline-legend"></div>
+            <div id="timeline-coverage"></div>
           </section>
 
           <div class="grid split">

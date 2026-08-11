@@ -19,6 +19,8 @@ export interface FetchOptions {
   timeoutMs?: number;
   method?: string;
   body?: string;
+  /** Set internally on the retry so a 429 can never loop. */
+  noRetry?: boolean;
 }
 
 export async function politeFetch(url: string, options: FetchOptions = {}): Promise<Response> {
@@ -53,6 +55,17 @@ export async function politeFetch(url: string, options: FetchOptions = {}): Prom
     if (response.status === 403 && (options.method ?? 'GET') === 'GET') {
       const viaCurl = await curlFetch(url, headers, options.timeoutMs ?? 20_000);
       if (viaCurl) return viaCurl;
+    }
+
+    // A 429 is a request to wait, not a refusal. Reddit in particular rate-limits
+    // per host, so pulling five subreddit feeds in a row can trip it and drop the
+    // last one or two for no reason other than pace. One backoff and retry costs
+    // a few seconds and recovers the feed; a second retry would just be pushing.
+    if (response.status === 429 && !options.noRetry) {
+      const after = Number(response.headers.get('retry-after'));
+      const wait = Math.min(Number.isFinite(after) && after > 0 ? after * 1000 : 5_000, 30_000);
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      return politeFetch(url, { ...options, noRetry: true });
     }
 
     return response;

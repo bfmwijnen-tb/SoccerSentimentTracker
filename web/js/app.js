@@ -315,6 +315,39 @@ function renderTimeline(points, markers) {
     (capped
       ? `<span class="item" style="color:var(--text-muted)">Eerste ${MAX_SERIES} clubs getoond — meer lijnen worden onleesbaar</span>`
       : '');
+
+  renderTimelineCoverage(points.filter((p) => ids.includes(p.club)));
+}
+
+/**
+ * Says so when the chart covers less ground than the button that was pressed.
+ *
+ * The axis is drawn from the data, not from the requested period, so asking for
+ * three months of a source that only has a week of history silently produces a
+ * one-week chart — which reads exactly like a broken button. Naming the gap is
+ * the difference between "this is broken" and "there is nothing there yet".
+ */
+function renderTimelineCoverage(points) {
+  const host = $('#timeline-coverage');
+  const dates = points.map((p) => p.bucket).filter(Boolean).sort();
+  host.innerHTML = '';
+  if (dates.length === 0) return;
+
+  const first = new Date(dates[0]);
+  const covered = Math.round((Date.now() - first.getTime()) / 86400000) + 1;
+  // A little slack: the last few days of a period are often simply not collected
+  // yet, and flagging that on every view would be noise.
+  if (covered >= state.days * 0.8) return;
+
+  const asked =
+    state.days >= 365 ? 'het seizoen' : state.days >= 90 ? `${state.days / 30} maanden` : `${state.days} dagen`;
+
+  host.innerHTML = `
+    <p class="sub2">
+      Je vroeg om ${asked}, maar deze selectie heeft pas
+      <b>${covered} ${covered === 1 ? 'dag' : 'dagen'}</b> aan gegevens — de grafiek toont alles
+      wat er is. Zodra er langer verzameld is, groeit hij vanzelf mee.
+    </p>`;
 }
 
 /* ----------------------------------------------------------------- topics */
@@ -352,46 +385,77 @@ function renderTopics(rows) {
 
 /* ------------------------------------------------------------- divergence */
 
+/**
+ * Fewest documents on each side before a gap is worth showing.
+ *
+ * Without a floor this panel happily ranked a club whose "fan mood" came from
+ * two posts above one built on a hundred and twenty, and the two-post club won
+ * — small samples produce the biggest gaps. The threshold is low enough that
+ * the smaller clubs still appear once there is anything to say about them.
+ */
+const MIN_DIVERGENCE_DOCUMENTS = 5;
+
 function renderDivergence(rows) {
   const host = $('#divergence');
   const labels = clubLabels();
-  const usable = rows.filter((r) => r.fanDocuments > 0 && r.mediaDocuments > 0);
+  const present = rows.filter((r) => r.fanDocuments > 0 && r.mediaDocuments > 0);
+  const usable = present
+    .filter(
+      (r) =>
+        r.fanDocuments >= MIN_DIVERGENCE_DOCUMENTS &&
+        r.mediaDocuments >= MIN_DIVERGENCE_DOCUMENTS,
+    )
+    // Biggest disagreement first — that is the number the panel exists for.
+    .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
 
-  if (usable.length === 0) {
-    const off = state.meta.collectors.filter((c) => c.reason);
+  if (present.length === 0) {
     host.innerHTML = `
       <div class="note">
         <b>Nog geen fanbronnen actief.</b> Deze vergelijking heeft zowel mediaberichten als
         fanreacties nodig. Op dit moment komt alles uit de media, dus er valt niets te vergelijken.
-        <p style="margin:12px 0 0">Schakel een fanbron in:</p>
-        <ul style="margin:6px 0 0;padding-left:20px">
-          ${off.map((c) => `<li><b>${escapeHtml(c.id)}</b> — ${escapeHtml(c.reason)}</li>`).join('')}
-        </ul>
+      </div>
+      ${fanSourceHelp()}`;
+    return;
+  }
+
+  if (usable.length === 0) {
+    host.innerHTML = `
+      <div class="note">
+        <b>Nog te weinig fanreacties.</b> Er komen wel fanreacties binnen, maar voor geen enkele
+        club nog ${MIN_DIVERGENCE_DOCUMENTS} aan beide kanten — te weinig om een verschil op te
+        baseren. Kies een langere periode, of wacht een paar updates af.
       </div>`;
     return;
   }
 
-  host.innerHTML = usable
-    .map((row) => {
-      const reading =
-        Math.abs(row.gap) < 0.1
-          ? 'Media en fans zitten op één lijn.'
-          : row.gap < 0
-            ? 'Fans zijn negatiever dan de pers.'
-            : 'Fans zijn positiever dan de pers.';
-      return `
+  const thin = present.length - usable.length;
+
+  host.innerHTML =
+    usable
+      .map((row) => {
+        const reading =
+          Math.abs(row.gap) < 0.1
+            ? 'Media en fans zitten op één lijn.'
+            : row.gap < 0
+              ? 'Fans zijn negatiever dan de pers.'
+              : 'Fans zijn positiever dan de pers.';
+        return `
         <div class="rank-row">
           <span class="who">
             <span class="dot" style="background:${colorFor(row.club)}"></span>
             <span>
               ${escapeHtml(labels[row.club])}
-              <span class="sub2">Media ${fmt(row.mediaScore)} (${row.mediaDocuments}) · Fans ${fmt(row.fanScore)} (${row.fanDocuments}) — ${reading}</span>
+              <span class="sub2">Media ${fmt(row.mediaScore)} (${row.mediaDocuments} berichten) · Fans ${fmt(row.fanScore)} (${row.fanDocuments}) — ${reading}</span>
             </span>
           </span>
           <span class="val delta ${row.gap > 0 ? 'up' : row.gap < 0 ? 'down' : 'flat'}">${fmt(row.gap)}</span>
         </div>`;
-    })
-    .join('');
+      })
+      .join('') +
+    (thin
+      ? `<p class="sub2" style="margin-top:10px">${thin} ${thin === 1 ? 'club is' : 'clubs zijn'}
+         weggelaten: minder dan ${MIN_DIVERGENCE_DOCUMENTS} berichten aan één van beide kanten.</p>`
+      : '');
 }
 
 /* ------------------------------------------------------------------- feed */
@@ -443,17 +507,110 @@ function renderFeed(items) {
 
 /* ---------------------------------------------------------------- sources */
 
+/**
+ * The sources that need credentials, and what each one buys.
+ *
+ * Naming the environment variable is not enough on its own: this dashboard is
+ * normally published by GitHub Actions, where there is no .env file to edit and
+ * no terminal to export a variable in. Nothing on the page said where the values
+ * actually go, so "how do I enable fan sources" had no findable answer.
+ */
+const FAN_SOURCES = [
+  {
+    id: 'reddit',
+    what: 'Zonder sleutel: posts uit r/AjaxAmsterdam, r/PSV, r/Feyenoord en r/Eredivisie. Met sleutel ook de reacties eronder — daar zit de emotie.',
+    where: 'reddit.com/prefs/apps → "create app" → type <b>script</b>',
+    secrets: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET'],
+  },
+  {
+    id: 'youtube',
+    what: 'Reacties onder clipjes en samenvattingen van de clubkanalen.',
+    where: 'console.cloud.google.com → APIs &amp; Services → YouTube Data API v3 → API-sleutel',
+    secrets: ['YOUTUBE_API_KEY'],
+  },
+  {
+    id: 'bluesky',
+    what: 'Korte reacties tijdens en vlak na de wedstrijd.',
+    where: 'bsky.app → Settings → App passwords (niet je gewone wachtwoord)',
+    secrets: ['BLUESKY_IDENTIFIER', 'BLUESKY_APP_PASSWORD'],
+  },
+];
+
+/**
+ * Step-by-step instructions for switching the fan sources on.
+ *
+ * It appears both under "Media versus fans" — where the missing data is what
+ * prompts the question — and under "Bronnen", where someone would go looking for
+ * it. Only the Bronnen copy opens by default; two expanded copies of the same
+ * table on one screen is noise.
+ */
+function fanSourceHelp({ open = false } = {}) {
+  const fullyOn = new Set(
+    state.meta.collectors.filter((c) => c.configured && !c.reason).map((c) => c.id),
+  );
+  const missing = FAN_SOURCES.filter((source) => !fullyOn.has(source.id));
+  if (missing.length === 0) return '';
+
+  // Open by default only when no fan source is fully configured — count the fan
+  // sources, not every collector, or the always-on news feeds keep it shut.
+  const anyFanSourceOn = FAN_SOURCES.some((source) => fullyOn.has(source.id));
+
+  return `
+    <details class="setup-help"${open && !anyFanSourceOn ? ' open' : ''}>
+      <summary>Fanbronnen uitbreiden (${missing.length} nog niet volledig)</summary>
+      <p>
+        Reddit en Bluesky draaien zonder sleutel, maar beperkt: Reddit levert dan alleen posts
+        en geen reacties. Met een gratis sleutel komt er per bron meer binnen. Je zet die één
+        keer klaar in je eigen repository; daarna haalt de zesuurlijkse update ze vanzelf op.
+      </p>
+      <ol class="steps">
+        <li>Haal de sleutel op bij de aanbieder (zie hieronder).</li>
+        <li>
+          Ga in je repository naar <b>Settings → Secrets and variables → Actions</b> en klik
+          <b>New repository secret</b>.
+        </li>
+        <li>Plak de waarde onder <b>exact</b> de naam die hieronder staat — hoofdletters en al.</li>
+        <li>
+          Ga naar <b>Actions → Collect and publish dashboard → Run workflow</b>. Na een paar
+          minuten staan de fanreacties erin.
+        </li>
+      </ol>
+      <table class="setup-table">
+        <thead>
+          <tr><th>Bron</th><th>Secret-naam</th><th>Waar haal je hem</th></tr>
+        </thead>
+        <tbody>
+          ${missing
+            .map(
+              (source) => `
+                <tr>
+                  <td><b>${escapeHtml(source.id)}</b><span class="sub2">${escapeHtml(source.what)}</span></td>
+                  <td>${source.secrets.map((name) => `<code>${name}</code>`).join('<br />')}</td>
+                  <td>${source.where}</td>
+                </tr>`,
+            )
+            .join('')}
+        </tbody>
+      </table>
+      <p class="sub2" style="margin-top:10px">
+        Draai je het lokaal? Dan gaan dezelfde namen in een bestand <code>.env</code> naast
+        <code>package.json</code>, als <code>NAAM=waarde</code> per regel.
+      </p>
+    </details>`;
+}
+
 function renderCollectors() {
-  $('#collectors').innerHTML = state.meta.collectors
-    .map(
-      (collector) => `
+  $('#collectors').innerHTML =
+    state.meta.collectors
+      .map(
+        (collector) => `
         <div class="source-status">
-          <span class="dot ${collector.configured ? 'on' : 'off'}"></span>
+          <span class="dot ${collector.configured ? (collector.reason ? 'part' : 'on') : 'off'}"></span>
           <b style="min-width:74px">${escapeHtml(collector.id)}</b>
           <span class="why">${escapeHtml(collector.reason ?? 'Actief')}</span>
         </div>`,
-    )
-    .join('');
+      )
+      .join('') + fanSourceHelp({ open: true });
 }
 
 function renderSourceTable(sources) {
@@ -861,8 +1018,11 @@ function toggleGroup(selector, stateKey, datasetKey, cast = String) {
       const raw = button.dataset[datasetKey];
       if (raw === undefined) return;
       state[stateKey] = cast(raw);
+      // Compare by value, not identity: the same control appears both in the
+      // sticky bar and beside the chart, and clicking one must light up its
+      // twin rather than switching it off.
       for (const other of $$(selector)) {
-        other.setAttribute('aria-pressed', String(other === button));
+        other.setAttribute('aria-pressed', String(other.dataset[datasetKey] === raw));
       }
       refresh();
     });

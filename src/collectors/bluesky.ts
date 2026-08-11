@@ -19,10 +19,15 @@ interface BlueskyPost {
  * endpoint is public, free and unmetered, and Dutch football has a genuine
  * presence there.
  *
- * Anonymous search works from residential IPs. From a datacenter the public
- * endpoint returns 403, so an app password (free, revocable, not your account
- * password) switches the collector to authenticated requests.
+ * The two anonymous hosts do not behave the same: `public.api.bsky.app` returns
+ * 403 from datacenter ranges — which is exactly where this normally runs, on
+ * GitHub Actions — while `api.bsky.app` answers 200 from that same address.
+ * Preferring the latter is what makes anonymous collection work unattended,
+ * with nothing to configure. An app password is still used when set, and is
+ * worth having if both hosts start refusing.
  */
+const ANONYMOUS_HOSTS = ['https://api.bsky.app', 'https://public.api.bsky.app'];
+
 export class BlueskyCollector implements Collector {
   readonly id = 'bluesky';
   readonly kind = 'bluesky' as const;
@@ -36,7 +41,7 @@ export class BlueskyCollector implements Collector {
 
   unavailableReason(): string | null {
     if (config.bluesky.identifier && config.bluesky.appPassword) return null;
-    return 'Running anonymously — set BLUESKY_IDENTIFIER and BLUESKY_APP_PASSWORD if requests are refused (common on cloud hosts).';
+    return 'Draait anoniem — dat werkt normaal gesproken. Zet BLUESKY_IDENTIFIER en BLUESKY_APP_PASSWORD als er niets binnenkomt.';
   }
 
   private async authenticate(): Promise<string | null> {
@@ -58,12 +63,32 @@ export class BlueskyCollector implements Collector {
     return this.jwt;
   }
 
+  /** Searches, trying each host until one does not refuse this address. */
+  private async search(query: URLSearchParams, token: string | null): Promise<BlueskyPost[]> {
+    const hosts = token ? ['https://bsky.social'] : ANONYMOUS_HOSTS;
+    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+    let lastStatus = 0;
+
+    for (const host of hosts) {
+      const response = await politeFetch(`${host}/xrpc/app.bsky.feed.searchPosts?${query}`, {
+        headers,
+      });
+      if (response.ok) {
+        return ((await response.json()) as { posts?: BlueskyPost[] }).posts ?? [];
+      }
+      lastStatus = response.status;
+    }
+
+    throw new Error(
+      lastStatus === 403
+        ? 'HTTP 403 — dit IP wordt anoniem geweigerd; zet BLUESKY_APP_PASSWORD'
+        : `HTTP ${lastStatus}`,
+    );
+  }
+
   async collect(ctx: CollectorContext): Promise<RawDocument[]> {
     const documents: RawDocument[] = [];
     const token = await this.authenticate().catch(() => null);
-
-    const host = token ? 'https://bsky.social' : 'https://public.api.bsky.app';
-    const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
     for (const club of FEATURED_CLUBS) {
       try {
@@ -74,21 +99,7 @@ export class BlueskyCollector implements Collector {
           since: ctx.since.toISOString(),
         });
 
-        const response = await politeFetch(
-          `${host}/xrpc/app.bsky.feed.searchPosts?${query}`,
-          { headers },
-        );
-
-        if (!response.ok) {
-          throw new Error(
-            response.status === 403
-              ? 'HTTP 403 — this IP is refused anonymously; set BLUESKY_APP_PASSWORD'
-              : `HTTP ${response.status}`,
-          );
-        }
-
-        const payload = (await response.json()) as { posts?: BlueskyPost[] };
-        const posts = payload.posts ?? [];
+        const posts = await this.search(query, token);
 
         for (const post of posts) {
           const text = post.record?.text ?? '';

@@ -41,7 +41,9 @@ export const CLUBS: Club[] = [
     featured: true,
     brand: { primary: '#d2122e', secondary: '#ffffff' },
     aliases: ['ajax', 'afc ajax', 'de godenzonen', 'amsterdammers', 'ajacieden', 'ajacied'],
-    subreddits: ['Ajax'],
+    // NOT r/Ajax — that is the town of Ajax, Ontario, and collecting it filled
+    // Ajax's sentiment with Canadian garage-door recommendations.
+    subreddits: ['AjaxAmsterdam'],
     youtubeChannels: ['UCiIlU9ijJhBGkPvHzIfW-cA'],
     fixtureNames: ['AFC Ajax', 'Ajax Amsterdam', 'Ajax'],
   },
@@ -299,7 +301,16 @@ export const CLUB_BY_FIXTURE_NAME = new Map(
   CLUBS.flatMap((c) => c.fixtureNames.map((name) => [name, c.id] as const)),
 );
 
-export const NEUTRAL_SUBREDDITS = ['Eredivisie', 'FootballNL'];
+/**
+ * Subreddits that cover the league rather than one club — useful because a
+ * club's own subreddit is a partisan sample by construction.
+ *
+ * r/FootballNL was listed here and does not exist (Reddit 302s the name to a
+ * search page), so every run spent three retries on it and logged a failure.
+ * r/Voetbal exists but is effectively dormant — one post in the current feed —
+ * so it is not worth a request either.
+ */
+export const NEUTRAL_SUBREDDITS = ['Eredivisie'];
 
 /**
  * The rivalries with their own emotional physics. A derby week does not behave

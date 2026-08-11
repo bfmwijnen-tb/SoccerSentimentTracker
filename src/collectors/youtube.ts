@@ -23,7 +23,7 @@ export class YouTubeCollector implements Collector {
 
   unavailableReason(): string | null {
     if (this.isConfigured()) return null;
-    return 'Set YOUTUBE_API_KEY (Data API v3 key from console.cloud.google.com).';
+    return 'Uit — zet YOUTUBE_API_KEY (gratis Data API v3-sleutel via console.cloud.google.com).';
   }
 
   private async api<T>(path: string, params: Record<string, string>): Promise<T> {
