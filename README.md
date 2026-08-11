@@ -79,7 +79,7 @@ day or two, so history builds forward from your first run; for unattended update
 | Port 8787 already in use | `PORT=9000 npm start` |
 | Charts are empty | Run `npm run setup` first — the database starts empty |
 | Opening `web/index.html` directly shows nothing | That file needs the API. Use `npm run export` for a standalone version |
-| "Media versus fans" says no fan sources | Expected. See *Data sources* below |
+| "Media versus fans" says too few fan reactions | Normal on a fresh install — fan history starts at your first collect. Run `npm run collect` a few times, or pick a shorter period |
 | Match-anchored views are empty | Expected until fixtures and collected documents cover the same dates. The dashboard shows you both ranges |
 
 Start over from scratch with `rm -rf data/ && npm run setup`.
@@ -137,9 +137,9 @@ measure something subtly different.**
 |---|---|---|
 | Dutch football RSS (11 feeds) | ✅ **Works now, no credentials** | *Media tone* — how the press writes about a club |
 | Eredivisie fixtures & results | ✅ **Works now, no credentials** | Match dates, scorelines, form |
-| Reddit (r/Ajax, r/PSV, r/Feyenoord, r/Eredivisie) | 🔑 Free OAuth app | Genuine fan reaction. Skews English on club subs |
+| Bluesky | ✅ **Works now, no credentials** | The practical X/Twitter replacement; ~300 posts/run |
+| Reddit (r/AjaxAmsterdam, r/PSV, r/Feyenoord, r/Eredivisie) | ✅ **Posts, no credentials** · 🔑 free OAuth app adds comments | Genuine fan reaction. Skews English on club subs |
 | YouTube comments | 🔑 Free API key | The most *Dutch* social source |
-| Bluesky | ⚠️ Free, but IP-dependent | The practical X/Twitter replacement |
 | X / Twitter | ❌ Not implemented | API starts around $200/month |
 
 That last column is the most important thing to understand here. Press coverage is written
@@ -147,13 +147,20 @@ to be measured — edited, hedged, professionally neutral. Fan reaction is not. 
 press is calm while its fans are furious is in a completely different situation from one
 where both agree, and the **Media versus fans** panel exists to surface exactly that gap.
 
-Out of the box you only get the media half. That is a real limitation, stated plainly on the
-dashboard rather than hidden.
+Both halves collect out of the box. It takes a few runs before the fan side has enough
+history to compare against — the dashboard says so rather than drawing a line from three
+data points.
 
-### Turning on the fan sources
+### Getting more out of the fan sources
 
-Reddit is the one worth doing — it is what turns "media tone" into actual fan sentiment and
-lights up the Media-versus-fans panel. Roughly two minutes:
+Nothing below is required. Each one widens a source that already works:
+
+- **Reddit** adds the *comments* under each post — the posts arrive without credentials, but
+  the comments are where the emotion is, and they are the single biggest upgrade here.
+- **YouTube** is off entirely without a key, and is the most Dutch-language social source.
+- **Bluesky** collects anonymously; an app password is insurance for if that stops working.
+
+Roughly two minutes each:
 
 **Reddit** (free, no approval needed)
 
@@ -169,7 +176,7 @@ lights up the Media-versus-fans panel. Roughly two minutes:
 2. **APIs & Services → Library** → enable **YouTube Data API v3**
 3. **Credentials → Create credentials → API key** → copy it
 
-**Bluesky** (free; only needed if anonymous requests are refused, which is normal on a server)
+**Bluesky** (free; only needed if anonymous requests start being refused)
 
 1. <https://bsky.app/settings/app-passwords> → **Add App Password**
 2. Copy it. Your identifier is your handle, e.g. `you.bsky.social`
@@ -188,15 +195,31 @@ npm run collect           # fan sources now included
 names: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `YOUTUBE_API_KEY`, `BLUESKY_IDENTIFIER`,
 `BLUESKY_APP_PASSWORD`. The workflow picks up whichever are set and skips the rest.
 
-Nothing breaks if you set none of them — you just keep measuring media tone only, which the
-dashboard says plainly rather than pretending otherwise.
+Nothing breaks if you set none of them — Reddit posts and Bluesky still collect, you just
+miss the Reddit comments and YouTube entirely.
 
-### Why some sources need credentials
+### How the anonymous paths actually work
 
-Reddit and Bluesky both refuse anonymous requests from datacenter IPs — an anti-bot measure
-on their side, not something you can prompt your way around. From a home connection
-Bluesky's public search works; from a VPS it returns 403. Reddit's OAuth app is free, takes
-about two minutes, and is the reliable path everywhere.
+Both of these were "needs credentials" until it turned out the block was narrower than it
+looked, and the details are worth writing down because they are not guessable:
+
+**Bluesky** has two anonymous hosts that do not behave the same. `public.api.bsky.app`
+returns 403 from datacenter ranges — which is exactly where this runs, on GitHub Actions —
+while `api.bsky.app` answers 200 from the same address. Preferring the latter is the entire
+fix; there is nothing to configure.
+
+**Reddit** refuses Node's TLS fingerprint on every endpoint, but serves
+`/r/<sub>/new/.rss` to `curl` from the same machine. Since `politeFetch` already falls back
+to curl (see below), the Atom feed is reachable without an OAuth app. That fallback is
+itself rate limited — intermittently, showing up as a 403 on the third or fourth subreddit
+rather than a steady one — so the collector backs off and retries instead of dropping half
+its feeds per run. What the feed cannot give you is comments; that is what the OAuth app
+buys.
+
+A trap worth naming: **r/Ajax is the town of Ajax, Ontario**, not the club. Collecting it
+fills Ajax's sentiment with Canadian grocery deals and garage-door recommendations. The club
+subreddit is **r/AjaxAmsterdam**. There is a test guarding this, because the wrong name
+reads as obviously correct.
 
 There is a subtler one worth knowing: several large Dutch publishers (DPG Media's `ad.nl`
 and `nu.nl`, plus `telegraaf.nl`) sit behind bot filters that fingerprint the **TLS
@@ -212,8 +235,8 @@ identity, same politeness delay, different HTTP client.
   reads the feed, not the article behind it.
 - **One request per host per 1.2s**, with an identifying User-Agent carrying a contact URL.
   Set a real one in `.env`.
-- **Official APIs wherever they exist** (Reddit OAuth, YouTube Data API, Bluesky XRPC)
-  rather than scraping HTML.
+- **Official APIs and published feeds wherever they exist** (Reddit OAuth or its per-
+  subreddit Atom feed, YouTube Data API, Bluesky XRPC) rather than scraping HTML.
 - **Author names are stored** for the feed view, but that is personal data under the GDPR.
   If you publish this or keep it long-term, drop or hash the `author` column — aggregate
   sentiment does not need it.
