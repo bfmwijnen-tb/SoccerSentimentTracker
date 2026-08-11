@@ -23,6 +23,20 @@ That's it. GitHub collects the data on its own machines every six hours and publ
 dashboard at `https://<your-username>.github.io/SoccerSentimentTracker/`. Nothing runs on
 your computer, ever. The workflow is `.github/workflows/publish.yml`.
 
+The workflow enables Pages itself on the first run, so step 2 is usually unnecessary — but
+some accounts and organisations do not allow that to happen automatically, in which case the
+deploy step fails with:
+
+```
+Failed to create deployment (status: 404)
+Ensure GitHub Pages has been enabled
+```
+
+That message means the collection worked and only publishing was blocked. Set
+**Settings → Pages → Source: GitHub Actions** and re-run. Either way the dashboard is
+attached to every run as a downloadable **dashboard** artifact, so you can always grab the
+file from the Actions tab even if Pages never gets switched on.
+
 Everything below is for running it locally instead.
 
 ---
