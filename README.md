@@ -48,11 +48,17 @@ to install, no accounts.
 
 ```bash
 npm install
-npm run setup     # fetches fixtures + the last 30 days of coverage (~1 min)
-npm start         # then open http://localhost:8787
+npm run setup       # fixtures + recent coverage (~1 min)
+npm run backfill    # ~6 months of history (~1 min) — optional but recommended
+npm start           # then open http://localhost:8787
 ```
 
-That's it. `npm run setup` is safe to re-run at any time.
+That's it. Both are safe to re-run at any time.
+
+**Why the backfill matters.** RSS feeds carry only a day or two, so a fresh database has
+almost no history and the timeline is nearly flat. Google News search accepts date ranges,
+so `npm run backfill` walks back a month at a time and builds roughly 150 days of real
+coverage in one pass. Without it you are waiting weeks for a trend to appear.
 
 **Keep it up to date** — there is a **Data verversen** button in the dashboard header that
 collects on demand, so you never need a terminal once it is running. RSS feeds only carry a
@@ -106,6 +112,7 @@ npm run export -- --out ~/Desktop/stemming.html   # write it somewhere else
 ```
 npm run setup                   First run: fixtures + a 30-day window
 npm run collect  [--days 7]     Fetch, score and store new documents
+npm run backfill [--months 6]   Pull historical coverage (--all for every club)
 npm run fixtures                Refresh Eredivisie fixtures and results
 npm run relex                   Re-run analysis over stored documents
 npm run rescore  [--limit 200]  Re-score ambiguous documents with Claude
@@ -313,8 +320,8 @@ extraction, storage, the API and the dashboard — picks it up automatically.
 - Out of the box this measures media tone, not fan sentiment. The dashboard says so.
 - The lexicon is tuned for Dutch. English Reddit comments score weakly; language is recorded
   per document so you can filter.
-- RSS carries roughly 24–48 hours, so history builds forward from your first run rather than
-  backfilling. The 90-day and season views fill in over time.
+- RSS carries roughly 24–48 hours. `npm run backfill` fills in about six months of history
+  up front; beyond that, coverage builds forward from your first run.
 - **Match-anchored views need fixtures and documents to cover the same dates.** Fixture data
   reaches back a full season while collection starts today, so early on the overlap is zero
   and those panels say so, showing you both date ranges.

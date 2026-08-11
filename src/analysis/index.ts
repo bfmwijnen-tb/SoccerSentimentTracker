@@ -289,7 +289,12 @@ export function reactivity(): ReactivityRow[] {
     });
   }
 
-  return rows.filter((r) => r.samples > 0).sort((a, b) => b.swing - a.swing);
+  // A swing averaged over one match is an anecdote, not a reactivity figure —
+  // and it sorts straight to the top, where it reads as the headline. Three is
+  // still thin, but it is the point where a single freak result stops
+  // dominating; the sample count travels with every row regardless.
+  const MIN_SAMPLES = 3;
+  return rows.filter((r) => r.samples >= MIN_SAMPLES).sort((a, b) => b.swing - a.swing);
 }
 
 /* -------------------------------------------------------------- predictive */
@@ -452,9 +457,17 @@ export function extremeWeeks(limit = 5): { best: WeekRecord[]; worst: WeekRecord
         HAVING documents >= 5
         ORDER BY score DESC`,
     )
-    .all() as Array<{ club: ClubId; weekStart: string; score: number; documents: number }>;
+    .all() as Array<{ club: ClubId; weekStart: string; score: number | null; documents: number }>;
 
-  const decorate = (row: (typeof rows)[number]): WeekRecord => ({
+  // A week whose documents all scored zero confidence divides by a zero weight,
+  // which NULLIF turns into NULL. Such a week is not a "best" or "worst" week —
+  // nothing in it was readable — so it is dropped rather than coerced to 0,
+  // where it would sit in the middle of the ranking pretending to be neutral.
+  const scored = rows.filter(
+    (row): row is typeof row & { score: number } => row.score !== null,
+  );
+
+  const decorate = (row: (typeof scored)[number]): WeekRecord => ({
     club: row.club,
     name: CLUB_BY_ID.get(row.club)?.shortName ?? row.club,
     weekStart: row.weekStart,
@@ -463,8 +476,8 @@ export function extremeWeeks(limit = 5): { best: WeekRecord[]; worst: WeekRecord
   });
 
   return {
-    best: rows.slice(0, limit).map(decorate),
-    worst: rows.slice(-limit).reverse().map(decorate),
+    best: scored.slice(0, limit).map(decorate),
+    worst: scored.slice(-limit).reverse().map(decorate),
   };
 }
 

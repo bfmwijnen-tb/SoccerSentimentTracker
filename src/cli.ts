@@ -9,6 +9,8 @@ import { rescoreAmbiguous } from './sentiment/llm.ts';
 import { CLUB_BY_ID } from './clubs.ts';
 import { collectFixtures, countMatches } from './collectors/fixtures.ts';
 import { checkAlerts } from './alerts.ts';
+import { backfill } from './collectors/backfill.ts';
+import { CLUBS, FEATURED_CLUBS } from './clubs.ts';
 import { pressureIndex, leagueTable } from './analysis/index.ts';
 import { exportStandalone } from './export.ts';
 
@@ -121,6 +123,15 @@ switch (command) {
     break;
   }
 
+  case 'backfill': {
+    // Google News answers date-ranged searches, so history can be pulled in one
+    // pass rather than waiting weeks for the routine collector to accumulate it.
+    const months = flag('months', 6);
+    const clubs = args.includes('--all') ? CLUBS : FEATURED_CLUBS;
+    await backfill(months, clubs, { onlyIfSparse: args.includes('--if-sparse') });
+    break;
+  }
+
   case 'fixtures': {
     console.log('Fetching Eredivisie fixtures and results…');
     await collectFixtures();
@@ -207,6 +218,8 @@ switch (command) {
 
     npm run setup                   First run: fixtures + a 30-day window
     npm run collect  [--days 7]     Fetch, score and store new documents
+    npm run backfill [--months 6]   Pull historical coverage (--all for every club,
+                                    --if-sparse to skip when history already exists)
     npm run fixtures                Refresh Eredivisie fixtures and results
     npm run relex                   Re-apply the lexicon to stored documents
     npm run rescore  [--limit 200]  Re-score ambiguous documents with Claude

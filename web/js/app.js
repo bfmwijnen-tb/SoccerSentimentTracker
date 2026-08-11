@@ -19,11 +19,27 @@ const colorFor = (club) => CLUB_COLORS[club] ?? NEUTRAL_CLUB;
 
 const MAX_SERIES = 3;
 
+/**
+ * Sensible smoothing for a given window.
+ *
+ * A three-day mean over six months is a sawtooth: the eye sees noise where the
+ * chart is meant to show a trend. The default therefore scales with the period,
+ * while an explicit choice by the reader is always respected (see
+ * state.smoothingPinned).
+ */
+function defaultSmoothing(days) {
+  if (days <= 30) return 3;
+  if (days <= 90) return 7;
+  return 14;
+}
+
 const state = {
   days: 30,
   clubs: new Set(['ajax', 'psv', 'feyenoord']),
   sources: '',
   smoothing: 3,
+  /** True once the reader picks a smoothing window themselves. */
+  smoothingPinned: false,
   view: 'overview',
   meta: null,
 };
@@ -747,6 +763,24 @@ function toggleGroup(selector, stateKey, datasetKey, cast = String) {
 
 function wireControls() {
   toggleGroup('[data-days]', 'days', 'days', Number);
+
+  // Changing the period re-picks the smoothing default, unless the reader has
+  // already expressed a preference.
+  for (const button of $$('[data-days]')) {
+    button.addEventListener('click', () => {
+      if (state.smoothingPinned) return;
+      state.smoothing = defaultSmoothing(Number(button.dataset.days));
+      for (const chip of $$('[data-smooth]')) {
+        chip.setAttribute('aria-pressed', String(Number(chip.dataset.smooth) === state.smoothing));
+      }
+    });
+  }
+
+  for (const button of $$('[data-smooth]')) {
+    button.addEventListener('click', () => {
+      state.smoothingPinned = true;
+    });
+  }
   toggleGroup('[data-source]', 'sources', 'source');
   toggleGroup('[data-smooth]', 'smoothing', 'smooth', Number);
 

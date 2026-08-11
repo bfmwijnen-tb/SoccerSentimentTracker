@@ -59,6 +59,10 @@ jobs:
       - name: Collect fixtures and documents
         run: |
           npm run fixtures
+          # On a cold cache the timeline would otherwise show only the day or
+          # two that RSS still lists; --if-sparse makes this a first-run cost
+          # rather than something every scheduled run pays.
+          npm run backfill -- --months 6 --if-sparse
           npm run collect -- --days 7
 
       - name: Check sentiment alerts

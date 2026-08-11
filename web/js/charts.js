@@ -267,19 +267,26 @@ export function lineChart(container, { series, colors, labels, markers = [], smo
     }, svg).textContent = formatDay(day);
   });
 
-  // Match markers first, so they sit behind the data lines.
+  // Match markers first, so they sit behind the data lines. Past a few dozen
+  // they stop being annotation and become a hatch pattern across the plot, so
+  // the guide lines are dropped and only the axis dots remain — the tooltip
+  // still reports the fixture for whatever day is hovered.
+  const denseMarkers = markers.length > 30;
+
   for (const marker of markers) {
     const day = marker.playedAt.slice(0, 10);
     if (!days.includes(day)) continue;
     const mx = x(day);
-    el('line', {
-      x1: mx, x2: mx, y1: M.top, y2: M.top + plotH,
-      style: paint({ stroke: '--grid' }),
-      'stroke-width': 1,
-      'stroke-dasharray': '3 4',
-    }, svg);
+    if (!denseMarkers) {
+      el('line', {
+        x1: mx, x2: mx, y1: M.top, y2: M.top + plotH,
+        style: paint({ stroke: '--grid' }),
+        'stroke-width': 1,
+        'stroke-dasharray': '3 4',
+      }, svg);
+    }
     el('circle', {
-      cx: mx, cy: M.top + plotH + 10, r: 3.5,
+      cx: mx, cy: M.top + plotH + 10, r: denseMarkers ? 2 : 3.5,
       fill: colors[marker.club] ?? 'var(--neutral)',
       style: paint({ stroke: '--surface-1' }),
       'stroke-width': 1.5,
