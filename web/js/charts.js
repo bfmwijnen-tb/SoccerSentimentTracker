@@ -67,6 +67,120 @@ function paint(properties) {
 
 const fmt = (n) => (n >= 0 ? '+' : '') + n.toFixed(2);
 
+function escapeText(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Fills a series onto every day in the domain.
+ *
+ * Days with no coverage get a linearly interpolated value and are flagged, so
+ * the line stays continuous while the tooltip can still say the number was
+ * inferred rather than measured. Leading and trailing gaps are left empty —
+ * extrapolating past the ends of the data would be inventing, not smoothing.
+ */
+function fillGaps(points, days) {
+  const byDay = new Map(points.map((p) => [p.bucket, p]));
+  const known = days.map((day, index) => (byDay.has(day) ? index : -1)).filter((i) => i >= 0);
+  if (known.length === 0) return [];
+
+  const first = known[0];
+  const last = known[known.length - 1];
+  const filled = [];
+
+  for (let index = first; index <= last; index += 1) {
+    const day = days[index];
+    const point = byDay.get(day);
+
+    if (point) {
+      filled.push({ ...point, measured: true });
+      continue;
+    }
+
+    const before = known.filter((k) => k < index).pop();
+    const after = known.find((k) => k > index);
+    const a = byDay.get(days[before]);
+    const b = byDay.get(days[after]);
+    const ratio = (index - before) / (after - before);
+
+    filled.push({
+      bucket: day,
+      score: a.score + (b.score - a.score) * ratio,
+      documents: 0,
+      measured: false,
+    });
+  }
+
+  return filled;
+}
+
+/**
+ * Centred rolling mean. Daily sentiment is genuinely spiky — a single strongly
+ * worded article moves a thin day a long way — and the shape of the trend is
+ * what the chart is for, so smoothing over a few days reads far better than the
+ * raw sawtooth. The underlying values stay available in the tooltip.
+ */
+function rollingMean(points, window) {
+  if (window <= 1) return points;
+  const half = Math.floor(window / 2);
+
+  return points.map((point, index) => {
+    const from = Math.max(0, index - half);
+    const to = Math.min(points.length, index + half + 1);
+    const slice = points.slice(from, to);
+    const mean = slice.reduce((sum, p) => sum + p.score, 0) / slice.length;
+    return { ...point, raw: point.score, score: mean };
+  });
+}
+
+/**
+ * Monotone cubic path (Fritsch–Carlson).
+ *
+ * A plain cubic spline overshoots around sharp changes, which on a bounded
+ * -1..1 sentiment axis would draw the line outside the range the data can even
+ * occupy. The monotone variant keeps the curve inside the values it connects,
+ * so it looks fluent without ever implying a score that never happened.
+ */
+function monotonePath(coordinates) {
+  const n = coordinates.length;
+  if (n === 0) return '';
+  if (n === 1) return `M${coordinates[0].x},${coordinates[0].y}`;
+  if (n === 2) return `M${coordinates[0].x},${coordinates[0].y}L${coordinates[1].x},${coordinates[1].y}`;
+
+  const dx = [];
+  const dy = [];
+  const slope = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    dx[i] = coordinates[i + 1].x - coordinates[i].x;
+    dy[i] = coordinates[i + 1].y - coordinates[i].y;
+    slope[i] = dy[i] / dx[i];
+  }
+
+  const tangent = [slope[0]];
+  for (let i = 1; i < n - 1; i += 1) {
+    if (slope[i - 1] * slope[i] <= 0) {
+      tangent[i] = 0; // local extremum: flatten so the curve cannot overshoot
+    } else {
+      const w1 = 2 * dx[i] + dx[i - 1];
+      const w2 = dx[i] + 2 * dx[i - 1];
+      tangent[i] = (w1 + w2) / (w1 / slope[i - 1] + w2 / slope[i]);
+    }
+  }
+  tangent[n - 1] = slope[n - 2];
+
+  let path = `M${coordinates[0].x},${coordinates[0].y}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const c1x = coordinates[i].x + dx[i] / 3;
+    const c1y = coordinates[i].y + (tangent[i] * dx[i]) / 3;
+    const c2x = coordinates[i + 1].x - dx[i] / 3;
+    const c2y = coordinates[i + 1].y - (tangent[i + 1] * dx[i]) / 3;
+    path += `C${c1x},${c1y} ${c2x},${c2y} ${coordinates[i + 1].x},${coordinates[i + 1].y}`;
+  }
+  return path;
+}
+
 function formatDay(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('nl-NL', {
     day: 'numeric',
@@ -81,13 +195,25 @@ function formatDay(iso) {
  * the chart is which side of zero a fanbase sits on, so the baseline is the
  * reference the eye should snap to, not the bottom of the plot.
  */
-export function lineChart(container, { series, colors, labels }) {
+export function lineChart(container, { series, colors, labels, markers = [], smoothing = 3 }) {
   container.innerHTML = '';
 
-  const days = [...new Set(series.flatMap((s) => s.points.map((p) => p.bucket)))].sort();
-  if (days.length === 0) {
+  // A continuous date axis: every day between the first and last observation,
+  // whether or not anything was published on it. Without this a quiet week
+  // silently compresses on the x-axis and the trend reads faster than it was.
+  const observed = [...new Set(series.flatMap((s) => s.points.map((p) => p.bucket)))].sort();
+  if (observed.length === 0) {
     container.innerHTML = '<p class="loading">Nog geen data voor deze periode.</p>';
     return;
+  }
+
+  const days = [];
+  for (
+    let cursor = new Date(`${observed[0]}T00:00:00Z`);
+    cursor <= new Date(`${observed[observed.length - 1]}T00:00:00Z`);
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  ) {
+    days.push(cursor.toISOString().slice(0, 10));
   }
 
   const W = 900;
@@ -141,46 +267,51 @@ export function lineChart(container, { series, colors, labels }) {
     }, svg).textContent = formatDay(day);
   });
 
-  // Series lines. Gaps in a club's coverage break the line rather than
-  // interpolating across them — a straight line over a silent week would invent
-  // sentiment that was never measured.
+  // Match markers first, so they sit behind the data lines.
+  for (const marker of markers) {
+    const day = marker.playedAt.slice(0, 10);
+    if (!days.includes(day)) continue;
+    const mx = x(day);
+    el('line', {
+      x1: mx, x2: mx, y1: M.top, y2: M.top + plotH,
+      style: paint({ stroke: '--grid' }),
+      'stroke-width': 1,
+      'stroke-dasharray': '3 4',
+    }, svg);
+    el('circle', {
+      cx: mx, cy: M.top + plotH + 10, r: 3.5,
+      fill: colors[marker.club] ?? 'var(--neutral)',
+      style: paint({ stroke: '--surface-1' }),
+      'stroke-width': 1.5,
+    }, svg);
+  }
+
+  // Series lines. Sparse days are bridged and the result is smoothed, so the
+  // trend reads as a continuous shape rather than a sawtooth; interpolated days
+  // are flagged in the tooltip so a bridged value is never mistaken for a
+  // measured one.
   const endLabels = [];
-  for (const s of series) {
-    const byDay = new Map(s.points.map((p) => [p.bucket, p]));
-    const segments = [];
-    let current = [];
-    for (const day of days) {
-      const point = byDay.get(day);
-      if (point) current.push(point);
-      else if (current.length) {
-        segments.push(current);
-        current = [];
-      }
-    }
-    if (current.length) segments.push(current);
+  const prepared = new Map();
 
-    for (const segment of segments) {
-      if (segment.length === 1) {
-        el('circle', {
-          cx: x(segment[0].bucket),
-          cy: y(segment[0].score),
-          r: 3,
-          fill: colors[s.key],
-        }, svg);
-        continue;
-      }
-      el('path', {
-        d: segment.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.bucket)},${y(p.score)}`).join(' '),
-        fill: 'none',
-        stroke: colors[s.key],
-        'stroke-width': 2,
-        'stroke-linejoin': 'round',
-        'stroke-linecap': 'round',
-      }, svg);
-    }
+  for (const s2 of series) {
+    const filled = fillGaps(s2.points, days);
+    const smoothed = rollingMean(filled, smoothing);
+    prepared.set(s2.key, smoothed);
+    if (smoothed.length === 0) continue;
 
-    const last = s.points[s.points.length - 1];
-    if (last) endLabels.push({ key: s.key, y: y(last.score) });
+    const coordinates = smoothed.map((p) => ({ x: x(p.bucket), y: y(p.score) }));
+
+    el('path', {
+      d: monotonePath(coordinates),
+      fill: 'none',
+      stroke: colors[s2.key],
+      'stroke-width': 2,
+      'stroke-linejoin': 'round',
+      'stroke-linecap': 'round',
+    }, svg);
+
+    const last = smoothed[smoothed.length - 1];
+    endLabels.push({ key: s2.key, y: y(last.score) });
   }
 
   // Direct labels at the line ends — this is what carries identity when a
@@ -194,8 +325,6 @@ export function lineChart(container, { series, colors, labels }) {
     const gap = endLabels[i].y - endLabels[i - 1].y;
     if (gap < LABEL_GAP) endLabels[i].y = endLabels[i - 1].y + LABEL_GAP;
   }
-  // If the stack overflowed the plot, shift the whole run back up so no label
-  // escapes the chart.
   const overflow = endLabels[endLabels.length - 1]?.y - (M.top + plotH);
   if (overflow > 0) for (const label of endLabels) label.y -= overflow;
 
@@ -218,10 +347,11 @@ export function lineChart(container, { series, colors, labels }) {
     opacity: 0,
   }, svg);
 
-  const markers = series.map((s) =>
+  const markers2 = series.map((s2) =>
     el('circle', {
+      'data-series': s2.key,
       r: 4.5,
-      fill: colors[s.key],
+      fill: colors[s2.key],
       style: paint({ stroke: '--surface-1' }),
       'stroke-width': 2,
       opacity: 0,
@@ -249,31 +379,46 @@ export function lineChart(container, { series, colors, labels }) {
     crosshair.setAttribute('opacity', 1);
 
     const rows = [];
-    series.forEach((s, i) => {
-      const point = s.points.find((p) => p.bucket === day);
-      const marker = markers[i];
+    series.forEach((s2, i) => {
+      const smoothed = prepared.get(s2.key) ?? [];
+      const point = smoothed.find((p) => p.bucket === day);
+      const marker = markers2[i];
       if (!point) {
         marker.setAttribute('opacity', 0);
         return;
       }
       marker.setAttribute('cx', x(day));
       marker.setAttribute('cy', y(point.score));
-      marker.setAttribute('opacity', 1);
+      marker.setAttribute('opacity', point.measured ? 1 : 0.35);
+
+      const value = point.raw ?? point.score;
+      const note = point.measured
+        ? `<span style="color:var(--text-muted);font-weight:400">· ${point.documents}</span>`
+        : '<span style="color:var(--text-muted);font-weight:400">· geen data</span>';
       rows.push(
-        `<div class="tt-row"><span class="lbl"><span class="key" style="background:${colors[s.key]}"></span>${labels[s.key]}</span>` +
-          `<span class="val">${fmt(point.score)} <span style="color:var(--text-muted);font-weight:400">· ${point.documents}</span></span></div>`,
+        `<div class="tt-row"><span class="lbl"><span class="key" style="background:${colors[s2.key]}"></span>${labels[s2.key]}</span>` +
+          `<span class="val">${fmt(value)} ${note}</span></div>`,
       );
     });
 
+    const played = markers.filter((m) => m.playedAt.slice(0, 10) === day);
+    const fixtures = played
+      .map((m) => {
+        const verdict = m.outcome === 'win' ? 'W' : m.outcome === 'draw' ? 'G' : m.outcome === 'loss' ? 'V' : '';
+        const score = m.scoreline ? ` ${m.scoreline}` : '';
+        return `<div class="tt-row"><span class="lbl">${m.home ? 'thuis' : 'uit'} v ${escapeText(m.opponent)}</span><span class="val">${verdict}${score}</span></div>`;
+      })
+      .join('');
+
     showTooltip(
-      `<div class="tt-title">${formatDay(day)}</div>${rows.join('') || '<div class="tt-row"><span class="lbl">Geen data</span></div>'}`,
+      `<div class="tt-title">${formatDay(day)}</div>${rows.join('') || '<div class="tt-row"><span class="lbl">Geen data</span></div>'}${fixtures ? `<div class="tt-sep"></div>${fixtures}` : ''}`,
       event,
     );
   });
 
   overlay.addEventListener('pointerleave', () => {
     crosshair.setAttribute('opacity', 0);
-    markers.forEach((m) => m.setAttribute('opacity', 0));
+    markers2.forEach((m) => m.setAttribute('opacity', 0));
     hideTooltip();
   });
 

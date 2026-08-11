@@ -1,9 +1,15 @@
 import { collectAll } from './pipeline.ts';
 import { db, countDocuments } from './db/index.ts';
 import { analyzeDocument } from './sentiment/analyzer.ts';
+import { detectTopics } from './sentiment/topics.ts';
+import { extractPlayers } from './sentiment/players.ts';
+import { detectClubs } from './clubs.ts';
 import { clubOverview, sourceHealth } from './db/queries.ts';
 import { rescoreAmbiguous } from './sentiment/llm.ts';
 import { CLUB_BY_ID } from './clubs.ts';
+import { collectFixtures, countMatches } from './collectors/fixtures.ts';
+import { checkAlerts } from './alerts.ts';
+import { pressureIndex, leagueTable } from './analysis/index.ts';
 
 const [command = 'help', ...args] = process.argv.slice(2);
 
@@ -35,25 +41,35 @@ switch (command) {
   }
 
   case 'relex': {
-    // Re-applies the lexicon to already-collected text. Sentiment is stored
-    // separately from documents precisely so a lexicon or analyzer change can
-    // be rolled out over the existing corpus without re-fetching anything.
+    // Re-runs the whole analysis over already-collected text. Sentiment, topics
+    // and player mentions are stored separately from the documents precisely so
+    // a lexicon, topic or extractor change can be rolled out over the existing
+    // corpus without re-fetching anything.
     const conn = db();
     const documents = conn
       .prepare(`SELECT id, title, body FROM documents`)
       .all() as Array<{ id: number; title: string | null; body: string }>;
 
-    const update = conn.prepare(
+    const updateSentiment = conn.prepare(
       `UPDATE sentiments
           SET score = ?, magnitude = ?, label = ?, confidence = ?, drivers = ?,
               ambiguous = ?, method = 'lexicon', scored_at = datetime('now')
         WHERE document_id = ?`,
     );
+    const clearTopics = conn.prepare(`DELETE FROM document_topics WHERE document_id = ?`);
+    const addTopic = conn.prepare(
+      `INSERT OR IGNORE INTO document_topics (document_id, topic) VALUES (?, ?)`,
+    );
+    const clearPlayers = conn.prepare(`DELETE FROM document_players WHERE document_id = ?`);
+    const addPlayer = conn.prepare(
+      `INSERT OR IGNORE INTO document_players (document_id, player, club) VALUES (?, ?, ?)`,
+    );
 
     const run = conn.transaction(() => {
       for (const doc of documents) {
+        const text = `${doc.title ?? ''}. ${doc.body}`;
         const result = analyzeDocument(doc.title, doc.body);
-        update.run(
+        updateSentiment.run(
           result.score,
           result.magnitude,
           result.label,
@@ -62,11 +78,19 @@ switch (command) {
           result.ambiguous ? 1 : 0,
           doc.id,
         );
+
+        clearTopics.run(doc.id);
+        for (const topic of detectTopics(text)) addTopic.run(doc.id, topic);
+
+        const clubs = detectClubs(doc.title, doc.body);
+        const primaryClub = clubs.find((c) => c.primary)?.club ?? clubs[0]?.club ?? null;
+        clearPlayers.run(doc.id);
+        for (const name of extractPlayers(text)) addPlayer.run(doc.id, name, primaryClub);
       }
     });
     run();
 
-    console.log(`Re-scored ${documents.length} documents with the current lexicon.`);
+    console.log(`Re-analysed ${documents.length} documents (sentiment, topics, players).`);
     break;
   }
 
@@ -96,12 +120,66 @@ switch (command) {
     break;
   }
 
+  case 'fixtures': {
+    console.log('Fetching Eredivisie fixtures and results…');
+    await collectFixtures();
+    console.log(`\n${countMatches()} matches stored.\n`);
+    break;
+  }
+
+  case 'alerts': {
+    const dryRun = args.includes('--dry-run');
+    const fired = await checkAlerts({ dryRun });
+    if (fired.length === 0) {
+      console.log('No alerts. All clubs within thresholds.');
+    } else {
+      console.log(`${fired.length} alert(s)${dryRun ? ' (dry run — nothing sent)' : ''}:\n`);
+      for (const alert of fired) console.log(`  [${alert.kind}] ${alert.message}`);
+    }
+    console.log();
+    break;
+  }
+
+  case 'pressure': {
+    const rows = pressureIndex(flag('days', 30));
+    console.log('\n  Ontslagbarometer — manager pressure\n');
+    console.log(`  ${'Club'.padEnd(12)} ${'Index'.padStart(6)}  ${'Band'.padEnd(9)} ${'Vorm'.padEnd(6)} ${'Coach'.padStart(7)}`);
+    console.log(`  ${'─'.repeat(52)}`);
+    for (const row of rows.slice(0, 10)) {
+      console.log(
+        `  ${row.name.padEnd(12)} ${row.index.toFixed(1).padStart(6)}  ${row.band.padEnd(9)} ${(row.recentForm || '—').padEnd(6)} ${row.coachSentiment.toFixed(2).padStart(7)}`,
+      );
+    }
+    console.log('\n  Mood indicator from public commentary — not a prediction about anyone\'s job.\n');
+    break;
+  }
+
+  case 'table': {
+    const rows = leagueTable(flag('days', 30));
+    console.log('\n  Eredivisie — stand en stemming\n');
+    console.log(`  ${'#'.padStart(2)} ${'Club'.padEnd(12)} ${'G'.padStart(3)} ${'P'.padStart(3)} ${'DV'.padStart(4)} ${'Stemming'.padStart(9)}`);
+    console.log(`  ${'─'.repeat(46)}`);
+    rows.forEach((row, i) => {
+      const diff = row.goalsFor - row.goalsAgainst;
+      console.log(
+        `  ${String(i + 1).padStart(2)} ${row.name.padEnd(12)} ${String(row.played).padStart(3)} ${String(row.points).padStart(3)} ${String(diff >= 0 ? '+' + diff : diff).padStart(4)} ${(row.documents ? row.sentiment.toFixed(2) : '—').padStart(9)}`,
+      );
+    });
+    console.log();
+    break;
+  }
+
+  case 'setup':
   case 'seed': {
-    // Convenience for a first run: collect a wider window so the charts have
-    // something to show immediately.
-    console.log('Seeding with the last 30 days…');
+    // One command to a working dashboard: fixtures first (they anchor every
+    // derived view), then a 30-day window of documents.
+    console.log('Setting up — this takes about a minute.\n');
+    console.log('▸ fixtures');
+    await collectFixtures();
+    console.log('\n▸ documents (last 30 days)');
     await collectAll(30);
-    console.log(`\n${countDocuments()} documents.\n`);
+    console.log(`\n✓ ${countDocuments()} documents, ${countMatches()} matches.`);
+    console.log('  Run "npm start" and open http://localhost:8787\n');
     break;
   }
 
@@ -115,11 +193,15 @@ switch (command) {
     console.log(`
   SoccerSentimentTracker
 
+    npm run setup                   First run: fixtures + a 30-day window
     npm run collect  [--days 7]     Fetch, score and store new documents
-    npm run seed                    First run: collect a 30-day window
+    npm run fixtures                Refresh Eredivisie fixtures and results
     npm run relex                   Re-apply the lexicon to stored documents
     npm run rescore  [--limit 200]  Re-score ambiguous documents with Claude
     npm run stats    [--days 30]    Print current standings
+    npm run table    [--days 30]    League table with a sentiment column
+    npm run pressure [--days 30]    Manager pressure index
+    npm run alerts   [--dry-run]    Check sentiment alerts, fire webhooks
     npm start                       Serve the dashboard
 `);
 }

@@ -77,6 +77,10 @@ h3 {
   display: flex;
   gap: 4px;
   align-items: center;
+  /* Wraps because the club filter carries all 18 Eredivisie clubs; without this
+     the row runs past the viewport and scrolls the whole page sideways. */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .control-label {
@@ -576,4 +580,311 @@ td.num {
     transition: none !important;
     animation: none !important;
   }
+}
+
+.tooltip .tt-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 7px 0 5px;
+}
+
+/* -------------------------------------------------------------------- tabs */
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 22px;
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 560;
+  padding: 10px 14px;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.14s, border-color 0.14s;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tab[aria-selected='true'] {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
+
+.chip.sm {
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  min-height: 28px;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+/* ------------------------------------------------------------- barometer -- */
+
+.baro {
+  display: grid;
+  grid-template-columns: 108px 1fr 58px;
+  gap: 14px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.baro:last-child {
+  border-bottom: 0;
+}
+
+.baro .who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.87rem;
+  min-width: 0;
+}
+
+.baro .who .crest {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.baro .track {
+  height: 9px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+
+.baro .fill {
+  /* Must be block: a span is inline by default, where width and height are
+     ignored and the bar renders as an invisible zero-height box. */
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.baro .idx {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 640;
+  font-size: 0.88rem;
+}
+
+.baro .detail {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: -4px;
+}
+
+.form-badge {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.form-badge span {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+
+.form-badge .W { background: var(--pos); }
+.form-badge .G { background: var(--neutral); }
+.form-badge .V { background: var(--neg); }
+
+/* ---------------------------------------------------------------- rows ---- */
+
+.rank-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.87rem;
+}
+
+.rank-row:last-child {
+  border-bottom: 0;
+}
+
+.rank-row .who {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.rank-row .who .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.rank-row .who .sub2 {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.rank-row .val {
+  font-variant-numeric: tabular-nums;
+  font-weight: 640;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.swing-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  padding: 3px 0;
+}
+
+.swing-bar .lane {
+  flex: 1;
+  height: 7px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  position: relative;
+  overflow: hidden;
+}
+
+.swing-bar .lane i {
+  display: block;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.swing-bar .cap {
+  width: 46px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.swing-bar .name {
+  width: 44px;
+  color: var(--text-muted);
+}
+
+/* -------------------------------------------------------------- derby ----- */
+
+.derby {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.derby:last-child {
+  margin-bottom: 0;
+}
+
+.derby h3 {
+  font-size: 0.92rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.derby .when {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.derby .sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.derby .side {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.derby .side .nm {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 620;
+  font-size: 0.84rem;
+  margin-bottom: 8px;
+}
+
+.derby .side .nm .crest {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.derby .side .ba {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.derby .side .ba b {
+  font-size: 1.05rem;
+  font-weight: 660;
+}
+
+tr.highlight td {
+  background: var(--surface-2);
+}
+
+td .clubcell {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+td .clubcell .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
 }

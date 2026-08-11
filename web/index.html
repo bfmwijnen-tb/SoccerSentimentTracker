@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Eredivisie Sentiment — Ajax · PSV · Feyenoord</title>
+    <title>De Stemming — Eredivisie sentiment</title>
     <meta
       name="description"
-      content="Publiek sentiment over Ajax, PSV en Feyenoord, gemeten uit Nederlandse media, forums en sociale platforms."
+      content="Publiek sentiment over de Eredivisie, gemeten uit Nederlandse media, forums en sociale platforms."
     />
     <link rel="stylesheet" href="/css/tokens.css" />
     <link rel="stylesheet" href="/css/app.css" />
@@ -21,15 +21,24 @@
         <div>
           <h1>De Stemming</h1>
           <p class="tagline">
-            Publiek sentiment over <strong>Ajax</strong>, <strong>PSV</strong> en
-            <strong>Feyenoord</strong>, gemeten uit Nederlandse voetbalmedia en — waar
-            ingeschakeld — fanreacties op Reddit, YouTube en Bluesky.
+            Publiek sentiment over de <strong>Eredivisie</strong>, gemeten uit Nederlandse
+            voetbalmedia en — waar ingeschakeld — fanreacties op Reddit, YouTube en Bluesky,
+            afgezet tegen uitslagen.
           </p>
         </div>
         <button class="chip" id="theme-toggle" aria-label="Wissel donker/licht thema">
-          <span id="theme-icon">◐</span> Thema
+          <span aria-hidden="true">◐</span> Thema
         </button>
       </header>
+
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Weergaven">
+        <button class="tab" role="tab" data-view="overview" aria-selected="true">Overzicht</button>
+        <button class="tab" role="tab" data-view="league" aria-selected="false">Competitie</button>
+        <button class="tab" role="tab" data-view="pressure" aria-selected="false">Druk</button>
+        <button class="tab" role="tab" data-view="players" aria-selected="false">Spelers</button>
+        <button class="tab" role="tab" data-view="derbies" aria-selected="false">Derby's</button>
+        <button class="tab" role="tab" data-view="records" aria-selected="false">Records</button>
+      </nav>
 
       <div class="controls" role="group" aria-label="Filters">
         <div class="control-group">
@@ -37,6 +46,7 @@
           <button class="chip" data-days="7">7d</button>
           <button class="chip" data-days="30" aria-pressed="true">30d</button>
           <button class="chip" data-days="90">90d</button>
+          <button class="chip" data-days="365">Seizoen</button>
         </div>
         <div class="control-group" id="club-filters">
           <span class="control-label">Clubs</span>
@@ -51,79 +61,226 @@
       </div>
 
       <main>
-        <section class="grid tiles" id="tiles" aria-label="Stand per club">
-          <p class="loading">Laden…</p>
-        </section>
-
-        <section class="card" aria-labelledby="timeline-title">
-          <header>
-            <h2 id="timeline-title">Sentiment over tijd</h2>
-            <p class="sub">
-              Dagelijks gewogen gemiddelde. Onderbrekingen in een lijn betekenen dat er die dag
-              niets over die club is gevonden — er wordt niet doorgetrokken.
-            </p>
-          </header>
-          <div class="chart-wrap" id="timeline"></div>
-          <div class="legend" id="timeline-legend"></div>
-        </section>
-
-        <div class="grid split">
-          <section class="card" aria-labelledby="topics-title">
-            <header>
-              <h2 id="topics-title">Waar gaat het over</h2>
-              <p class="sub">
-                Sentiment per onderwerp. Boos zijn over de arbitrage is iets anders dan boos zijn
-                over de clubleiding.
-              </p>
-            </header>
-            <div class="chart-wrap" id="topics"></div>
-            <div class="legend" id="topics-legend"></div>
+        <!-- ------------------------------------------------------- overview -->
+        <div class="view" data-view="overview">
+          <section class="grid tiles" id="tiles" aria-label="Stand per club">
+            <p class="loading">Laden…</p>
           </section>
 
-          <section class="card" aria-labelledby="divergence-title">
+          <section class="card" aria-labelledby="timeline-title">
+            <header class="card-head">
+              <div>
+                <h2 id="timeline-title">Sentiment over tijd</h2>
+                <p class="sub">
+                  Dagelijks gewogen gemiddelde, afgevlakt over een voortschrijdend venster.
+                  Stippellijnen zijn wedstrijddagen — hover voor de uitslag.
+                </p>
+              </div>
+              <div class="control-group">
+                <span class="control-label">Vloeiend</span>
+                <button class="chip sm" data-smooth="1">Ruw</button>
+                <button class="chip sm" data-smooth="3" aria-pressed="true">3d</button>
+                <button class="chip sm" data-smooth="7">7d</button>
+              </div>
+            </header>
+            <div class="chart-wrap" id="timeline"></div>
+            <div class="legend" id="timeline-legend"></div>
+          </section>
+
+          <div class="grid split">
+            <section class="card" aria-labelledby="topics-title">
+              <header>
+                <h2 id="topics-title">Waar gaat het over</h2>
+                <p class="sub">
+                  Boos zijn over de arbitrage is iets anders dan boos zijn over de clubleiding.
+                </p>
+              </header>
+              <div class="chart-wrap" id="topics"></div>
+              <div class="legend" id="topics-legend"></div>
+            </section>
+
+            <section class="card" aria-labelledby="divergence-title">
+              <header>
+                <h2 id="divergence-title">Media versus fans</h2>
+                <p class="sub">
+                  Perscommentaar wordt geschreven om gemeten te worden, fanreacties niet. Het gat
+                  ertussen is vaak het interessantste cijfer op de pagina.
+                </p>
+              </header>
+              <div id="divergence"></div>
+            </section>
+          </div>
+
+          <div class="grid split">
+            <section class="card" aria-labelledby="feed-title">
+              <header>
+                <h2 id="feed-title">Wat er binnenkomt</h2>
+                <p class="sub">Meest recente berichten, gekleurd naar sentiment.</p>
+              </header>
+              <div class="feed" id="feed"></div>
+            </section>
+
+            <section class="card" aria-labelledby="sources-title">
+              <header>
+                <h2 id="sources-title">Bronnen</h2>
+                <p class="sub">Wat er meet, en wat er uit staat.</p>
+              </header>
+              <div id="collectors"></div>
+              <details class="table-view">
+                <summary>Toon brontabel</summary>
+                <div class="chart-wrap">
+                  <table id="source-table">
+                    <thead>
+                      <tr>
+                        <th>Bron</th>
+                        <th>Type</th>
+                        <th class="num">Berichten</th>
+                        <th class="num">Sentiment</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+          </div>
+        </div>
+
+        <!-- --------------------------------------------------------- league -->
+        <div class="view" data-view="league" hidden>
+          <section class="card" aria-labelledby="table-title">
             <header>
-              <h2 id="divergence-title">Media versus fans</h2>
+              <h2 id="table-title">Eredivisie — stand en stemming</h2>
               <p class="sub">
-                Perscommentaar wordt geschreven om gemeten te worden, fanreacties niet. Het gat
-                ertussen is vaak het interessantste cijfer op de pagina.
+                De interessante regel is de mismatch: vierde staan met een fanbase op −0,4 is een
+                andere situatie dan vierde staan op +0,3.
               </p>
             </header>
-            <div id="divergence"></div>
+            <div class="chart-wrap">
+              <table id="league-table">
+                <thead>
+                  <tr>
+                    <th class="num">#</th>
+                    <th>Club</th>
+                    <th class="num">G</th>
+                    <th class="num">W</th>
+                    <th class="num">GL</th>
+                    <th class="num">V</th>
+                    <th class="num">DV</th>
+                    <th class="num">Ptn</th>
+                    <th class="num">Stemming</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </section>
         </div>
 
-        <div class="grid split">
-          <section class="card" aria-labelledby="feed-title">
+        <!-- ------------------------------------------------------- pressure -->
+        <div class="view" data-view="pressure" hidden>
+          <section class="card" aria-labelledby="pressure-title">
             <header>
-              <h2 id="feed-title">Wat er binnenkomt</h2>
-              <p class="sub">Meest recente berichten, gekleurd naar sentiment.</p>
+              <h2 id="pressure-title">Ontslagbarometer</h2>
+              <p class="sub">
+                Trainerssentiment (50%), de trend ten opzichte van de vorige periode (30%) en de
+                punten uit de laatste vijf duels (20%). Een stemmingsindicator uit publieke
+                berichtgeving — <strong>geen voorspelling over iemands baan</strong>.
+              </p>
             </header>
-            <div class="feed" id="feed"></div>
+            <div id="pressure"></div>
           </section>
 
-          <section class="card" aria-labelledby="sources-title">
+          <div class="grid split">
+            <section class="card" aria-labelledby="reactivity-title">
+              <header>
+                <h2 id="reactivity-title">Overdrijven fans?</h2>
+                <p class="sub">
+                  Stemmingsverschil tussen 72 uur vóór en 48 uur ná een wedstrijd, gemiddeld per
+                  uitslag. Hoe hoger de uitslag, hoe heftiger de fanbase reageert.
+                </p>
+              </header>
+              <div id="reactivity"></div>
+            </section>
+
+            <section class="card" aria-labelledby="predictive-title">
+              <header>
+                <h2 id="predictive-title">Voorspelt stemming de uitslag?</h2>
+                <p class="sub">
+                  Correlatie tussen sentiment in de drie dagen vóór aftrap en de behaalde punten.
+                  Waarschijnlijk zwak — het eerlijke antwoord is het punt.
+                </p>
+              </header>
+              <div id="predictive"></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- -------------------------------------------------------- players -->
+        <div class="view" data-view="players" hidden>
+          <div class="grid split">
+            <section class="card" aria-labelledby="players-title">
+              <header>
+                <h2 id="players-title">Spelers in de aandacht</h2>
+                <p class="sub">
+                  Namen worden uit de tekst gehaald, niet uit een selectielijst — nieuwe namen
+                  verschijnen vanzelf. Geaggregeerde toon van publieke berichtgeving over
+                  beroepsmatig presteren.
+                </p>
+              </header>
+              <div id="players"></div>
+            </section>
+
+            <section class="card" aria-labelledby="transfers-title">
+              <header>
+                <h2 id="transfers-title">Transferhype</h2>
+                <p class="sub">
+                  Spelers in transferberichten. Veel genoemd én positief is een fanbase die de
+                  transfer wil; veel genoemd en negatief is er een die hem vreest.
+                </p>
+              </header>
+              <div id="transfers"></div>
+            </section>
+          </div>
+        </div>
+
+        <!-- -------------------------------------------------------- derbies -->
+        <div class="view" data-view="derbies" hidden>
+          <section class="card" aria-labelledby="derbies-title">
             <header>
-              <h2 id="sources-title">Bronnen</h2>
-              <p class="sub">Wat er meet, en wat er uit staat.</p>
+              <h2 id="derbies-title">Derby's</h2>
+              <p class="sub">
+                Derbyweken hebben hun eigen emotionele fysica. Per rivaliteit de laatste ontmoeting,
+                met beide fanbases voor en na de aftrap.
+              </p>
             </header>
-            <div id="collectors"></div>
-            <details class="table-view">
-              <summary>Toon brontabel</summary>
-              <div class="chart-wrap">
-                <table id="source-table">
-                  <thead>
-                    <tr>
-                      <th>Bron</th>
-                      <th>Type</th>
-                      <th class="num">Berichten</th>
-                      <th class="num">Sentiment</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </details>
+            <div id="derbies"></div>
           </section>
+        </div>
+
+        <!-- -------------------------------------------------------- records -->
+        <div class="view" data-view="records" hidden>
+          <div class="grid split">
+            <section class="card" aria-labelledby="records-title">
+              <header>
+                <h2 id="records-title">Beste en slechtste weken</h2>
+                <p class="sub">Sinds het verzamelen begon. Schrijft zijn eigen koppen.</p>
+              </header>
+              <div id="records"></div>
+            </section>
+
+            <section class="card" aria-labelledby="alerts-title">
+              <header>
+                <h2 id="alerts-title">Meldingen</h2>
+                <p class="sub">
+                  Afgevuurd wanneer een club hard daalt of onder de ondergrens zakt. Stel
+                  <code>ALERT_WEBHOOK_URL</code> in voor Slack of Discord; draai
+                  <code>npm run alerts</code> vanuit cron.
+                </p>
+              </header>
+              <div id="alerts"></div>
+            </section>
+          </div>
         </div>
       </main>
     </div>

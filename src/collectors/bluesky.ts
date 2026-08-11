@@ -1,6 +1,6 @@
 import type { Collector, CollectorContext, RawDocument } from '../types.ts';
 import { config } from '../config.ts';
-import { CLUBS } from '../clubs.ts';
+import { FEATURED_CLUBS } from '../clubs.ts';
 import { politeFetch } from './http.ts';
 
 interface BlueskyPost {
@@ -65,7 +65,7 @@ export class BlueskyCollector implements Collector {
     const host = token ? 'https://bsky.social' : 'https://public.api.bsky.app';
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
 
-    for (const club of CLUBS) {
+    for (const club of FEATURED_CLUBS) {
       try {
         const query = new URLSearchParams({
           q: club.shortName,

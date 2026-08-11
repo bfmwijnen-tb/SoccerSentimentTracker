@@ -60,6 +60,52 @@ CREATE TABLE IF NOT EXISTS document_topics (
 
 CREATE INDEX IF NOT EXISTS idx_document_topics_topic ON document_topics (topic);
 
+-- Fixtures. Sentiment on its own shows a dip without saying why; anchoring it
+-- to match days turns every spike into something explainable, and is what the
+-- reactivity, pressure, predictive and derby views are all built on.
+CREATE TABLE IF NOT EXISTS matches (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  season      TEXT    NOT NULL,
+  round       TEXT,
+  played_at   TEXT    NOT NULL,
+  home_club   TEXT,
+  away_club   TEXT,
+  home_name   TEXT    NOT NULL,
+  away_name   TEXT    NOT NULL,
+  home_goals  INTEGER,
+  away_goals  INTEGER,
+  UNIQUE (season, played_at, home_name, away_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_matches_played ON matches (played_at DESC);
+CREATE INDEX IF NOT EXISTS idx_matches_home   ON matches (home_club);
+CREATE INDEX IF NOT EXISTS idx_matches_away   ON matches (away_club);
+
+-- Player mentions, extracted per document. Kept as a join table rather than a
+-- column so one article discussing three players counts for all three.
+CREATE TABLE IF NOT EXISTS document_players (
+  document_id INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  player      TEXT    NOT NULL,
+  club        TEXT,
+  PRIMARY KEY (document_id, player)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_players_player ON document_players (player);
+CREATE INDEX IF NOT EXISTS idx_document_players_club   ON document_players (club);
+
+-- Fired alerts, so a sustained slump notifies once rather than every run.
+CREATE TABLE IF NOT EXISTS alert_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  club       TEXT    NOT NULL,
+  kind       TEXT    NOT NULL,
+  score      REAL    NOT NULL,
+  delta      REAL    NOT NULL,
+  message    TEXT    NOT NULL,
+  fired_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_alert_log_fired ON alert_log (club, kind, fired_at DESC);
+
 -- Observability for the collectors: which source produced how much, and which
 -- ones are quietly failing. Surfaced on the dashboard's source-health panel.
 CREATE TABLE IF NOT EXISTS collector_runs (

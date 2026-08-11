@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.ts';
-import { CLUBS } from '../clubs.ts';
+import { CLUBS, DERBIES } from '../clubs.ts';
 import { TOPIC_LABELS } from '../sentiment/topics.ts';
 import { COLLECTORS } from '../collectors/index.ts';
 import { countDocuments } from '../db/index.ts';
@@ -17,6 +17,19 @@ import {
   mediaVsFans,
   type Filters,
 } from '../db/queries.ts';
+import {
+  leagueTable,
+  pressureIndex,
+  reactivity,
+  predictive,
+  derbies,
+  extremeWeeks,
+  players,
+  transferHype,
+  matchMarkers,
+} from '../analysis/index.ts';
+import { countMatches, coverage } from '../collectors/fixtures.ts';
+import { recentAlerts } from '../alerts.ts';
 import type { ClubId } from '../types.ts';
 
 const webRoot = resolve(fileURLToPath(new URL('../../web', import.meta.url)));
@@ -47,15 +60,19 @@ function parseFilters(url: URL): Filters {
 
 const routes: Record<string, (url: URL) => unknown> = {
   '/api/meta': () => ({
-    clubs: CLUBS.map(({ id, name, shortName, city, brand }) => ({
+    clubs: CLUBS.map(({ id, name, shortName, city, brand, featured }) => ({
       id,
       name,
       shortName,
       city,
       brand,
+      featured,
     })),
+    derbies: DERBIES,
     topics: TOPIC_LABELS,
     totalDocuments: countDocuments(),
+    totalMatches: countMatches(),
+    coverage: coverage(),
     collectors: COLLECTORS.map((collector) => ({
       id: collector.id,
       kind: collector.kind,
@@ -85,6 +102,32 @@ const routes: Record<string, (url: URL) => unknown> = {
   '/api/sources': (url) => sourceHealth(parseFilters(url).days),
 
   '/api/divergence': (url) => mediaVsFans(parseFilters(url).days),
+
+  '/api/table': (url) => leagueTable(parseFilters(url).days),
+
+  '/api/pressure': (url) => pressureIndex(parseFilters(url).days),
+
+  '/api/reactivity': () => reactivity(),
+
+  '/api/predictive': () => predictive(),
+
+  '/api/derbies': () => derbies(),
+
+  '/api/records': () => extremeWeeks(5),
+
+  '/api/players': (url) => {
+    const filters = parseFilters(url);
+    return players(filters.days, filters.clubs?.length === 1 ? filters.clubs[0] : undefined);
+  },
+
+  '/api/transfers': (url) => transferHype(parseFilters(url).days),
+
+  '/api/matches': (url) => {
+    const filters = parseFilters(url);
+    return matchMarkers(filters.clubs ?? CLUBS.map((c) => c.id), filters.days);
+  },
+
+  '/api/alerts': () => recentAlerts(20),
 };
 
 const server = createServer(async (request, response) => {
@@ -131,5 +174,6 @@ const server = createServer(async (request, response) => {
 server.listen(config.port, () => {
   console.log(`\n  SoccerSentimentTracker`);
   console.log(`  → http://localhost:${config.port}`);
-  console.log(`  → ${countDocuments()} documents in ${config.dbPath}\n`);
+  console.log(`  → ${countDocuments()} documents, ${countMatches()} matches`);
+  console.log(`  → ${config.dbPath}\n`);
 });

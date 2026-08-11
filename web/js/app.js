@@ -1,19 +1,35 @@
 import { lineChart, topicChart, hideTooltip } from './charts.js';
 
+/**
+ * Club colours.
+ *
+ * Only the three featured clubs get a dedicated hue: the validated categorical
+ * palette carries exactly three all-pairs-distinct slots, and a fourth would
+ * put two confusable colours on the same axis. Every other club renders in a
+ * neutral tone and is identified by name — which is also why the timeline caps
+ * its selection at three series.
+ */
 const CLUB_COLORS = {
   ajax: 'var(--club-ajax)',
   psv: 'var(--club-psv)',
   feyenoord: 'var(--club-feyenoord)',
 };
+const NEUTRAL_CLUB = 'var(--neutral)';
+const colorFor = (club) => CLUB_COLORS[club] ?? NEUTRAL_CLUB;
+
+const MAX_SERIES = 3;
 
 const state = {
   days: 30,
   clubs: new Set(['ajax', 'psv', 'feyenoord']),
   sources: '',
+  smoothing: 3,
+  view: 'overview',
   meta: null,
 };
 
 const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 async function api(path, params = {}) {
   const query = new URLSearchParams({ days: String(state.days), ...params });
@@ -23,9 +39,14 @@ async function api(path, params = {}) {
   return response.json();
 }
 
-const fmt = (n) => (n >= 0 ? '+' : '') + n.toFixed(2);
+const fmt = (n) => (n >= 0 ? '+' : '') + Number(n).toFixed(2);
 
-/** Plain-language reading of a score, so the number is never the only cue. */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = String(text ?? '');
+  return div.innerHTML;
+}
+
 function verdict(score, documents) {
   if (documents === 0) return 'Geen berichten gevonden';
   if (score <= -0.5) return 'Zwaar negatief — crisisstemming';
@@ -43,12 +64,46 @@ function polarityColor(score) {
   return 'var(--pos-strong)';
 }
 
-function activeClubs() {
-  return state.meta.clubs.map((c) => c.id).filter((id) => state.clubs.has(id));
+const activeClubs = () => state.meta.clubs.map((c) => c.id).filter((id) => state.clubs.has(id));
+const clubLabels = () => Object.fromEntries(state.meta.clubs.map((c) => [c.id, c.shortName]));
+
+/**
+ * Explains why a match-anchored view is empty.
+ *
+ * The usual cause is not a bug: fixture data covers a whole past season while
+ * document collection starts the day you first run the collector, so until the
+ * two date ranges overlap there is genuinely nothing to compare.
+ */
+function coverageNote(what) {
+  const c = state.meta.coverage ?? {};
+  const day = (iso) =>
+    iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  if (!c.matchesFrom) {
+    return `<div class="note"><b>Nog geen wedstrijdgegevens.</b> Draai <code>npm run fixtures</code> om de Eredivisie-uitslagen op te halen.</div>`;
+  }
+
+  if (!c.overlappingMatches) {
+    return `<div class="note">
+      <b>${what} heeft overlap nodig tussen wedstrijden en berichten — die is er nog niet.</b>
+      <p style="margin:10px 0 0">
+        Wedstrijden lopen van ${day(c.matchesFrom)} tot ${day(c.matchesTo)}; berichten van
+        ${day(c.documentsFrom)} tot ${day(c.documentsTo)}. RSS-feeds gaan maar een dag of twee terug,
+        dus de berichtgeschiedenis begint bij je eerste run en groeit vanaf daar.
+      </p>
+      <p style="margin:10px 0 0">
+        Dit vult zich vanzelf zodra het seizoen loopt en je de collector een tijdje hebt draaien —
+        zet <code>npm run collect</code> in cron.
+      </p>
+    </div>`;
+  }
+
+  return `<div class="note"><b>Nog te weinig gegevens.</b> Er zijn meer wedstrijden met voorbeschouwing nodig; dit vult zich naarmate er langer verzameld wordt.</div>`;
 }
 
-function clubLabels() {
-  return Object.fromEntries(state.meta.clubs.map((c) => [c.id, c.shortName]));
+function formBadge(form) {
+  if (!form) return '<span style="color:var(--text-muted)">—</span>';
+  return `<span class="form-badge">${[...form].map((c) => `<span class="${c}">${c}</span>`).join('')}</span>`;
 }
 
 /* ------------------------------------------------------------------ tiles */
@@ -67,41 +122,26 @@ function renderTiles(overview) {
   host.innerHTML = ids
     .map((id) => {
       const row = byClub.get(id) ?? {
-        score: 0,
-        documents: 0,
-        delta: 0,
-        volatility: 0,
-        positive: 0,
-        negative: 0,
+        score: 0, documents: 0, delta: 0, volatility: 0,
       };
       const direction = row.delta > 0.02 ? 'up' : row.delta < -0.02 ? 'down' : 'flat';
       const arrow = direction === 'up' ? '↑' : direction === 'down' ? '↓' : '→';
-      const needle = ((row.score + 1) / 2) * 100;
 
       return `
         <article class="card tile">
           <div class="club-name">
-            <span class="crest" style="background:${CLUB_COLORS[id]}"></span>
-            ${labels[id]}
+            <span class="crest" style="background:${colorFor(id)}"></span>
+            ${escapeHtml(labels[id])}
           </div>
           <div class="score" style="color:${polarityColor(row.score)}">${fmt(row.score)}</div>
           <div class="verdict">${verdict(row.score, row.documents)}</div>
           <div class="meter" role="img" aria-label="Sentiment ${fmt(row.score)} op een schaal van -1 tot +1">
-            <span class="needle" style="left:${needle}%"></span>
+            <span class="needle" style="left:${((row.score + 1) / 2) * 100}%"></span>
           </div>
           <div class="meta">
-            <div>
-              <b>${row.documents}</b>
-              berichten
-            </div>
-            <div>
-              <b class="delta ${direction}">${arrow} ${fmt(row.delta)}</b>
-              vs vorige ${state.days}d
-            </div>
-            <div>
-              <b>${row.volatility.toFixed(2)}</b>
-              wisselvalligheid
-            </div>
+            <div><b>${row.documents}</b> berichten</div>
+            <div><b class="delta ${direction}">${arrow} ${fmt(row.delta)}</b> vs vorige ${state.days}d</div>
+            <div><b>${Number(row.volatility).toFixed(2)}</b> wisselvalligheid</div>
           </div>
         </article>`;
     })
@@ -110,33 +150,40 @@ function renderTiles(overview) {
 
 /* --------------------------------------------------------------- timeline */
 
-function renderTimeline(points) {
-  const ids = activeClubs();
+function renderTimeline(points, markers) {
+  const ids = activeClubs().slice(0, MAX_SERIES);
   const labels = clubLabels();
-  const series = ids.map((id) => ({
-    key: id,
-    points: points.filter((p) => p.club === id),
-  }));
 
-  lineChart($('#timeline'), { series, colors: CLUB_COLORS, labels });
+  lineChart($('#timeline'), {
+    series: ids.map((id) => ({ key: id, points: points.filter((p) => p.club === id) })),
+    colors: Object.fromEntries(ids.map((id) => [id, colorFor(id)])),
+    labels,
+    markers: markers.filter((m) => ids.includes(m.club)),
+    smoothing: state.smoothing,
+  });
 
-  $('#timeline-legend').innerHTML = ids
-    .map(
-      (id) =>
-        `<span class="item"><span class="key" style="background:${CLUB_COLORS[id]}"></span>${labels[id]}</span>`,
-    )
-    .join('');
+  const capped = activeClubs().length > MAX_SERIES;
+  $('#timeline-legend').innerHTML =
+    ids
+      .map(
+        (id) =>
+          `<span class="item"><span class="key" style="background:${colorFor(id)}"></span>${escapeHtml(labels[id])}</span>`,
+      )
+      .join('') +
+    (capped
+      ? `<span class="item" style="color:var(--text-muted)">Eerste ${MAX_SERIES} clubs getoond — meer lijnen worden onleesbaar</span>`
+      : '');
 }
 
 /* ----------------------------------------------------------------- topics */
 
 function renderTopics(rows) {
-  const ids = activeClubs();
+  const ids = activeClubs().slice(0, MAX_SERIES);
   const labels = clubLabels();
-
   const grouped = new Map();
+
   for (const row of rows) {
-    if (!state.clubs.has(row.club)) continue;
+    if (!ids.includes(row.club)) continue;
     if (!grouped.has(row.topic)) grouped.set(row.topic, { topic: row.topic, byClub: {}, total: 0 });
     const entry = grouped.get(row.topic);
     entry.byClub[row.club] = { score: row.score, documents: row.documents };
@@ -148,7 +195,7 @@ function renderTopics(rows) {
   topicChart($('#topics'), {
     topics,
     clubs: ids,
-    colors: CLUB_COLORS,
+    colors: Object.fromEntries(ids.map((id) => [id, colorFor(id)])),
     labels,
     topicLabels: state.meta.topics,
   });
@@ -156,7 +203,7 @@ function renderTopics(rows) {
   $('#topics-legend').innerHTML = ids
     .map(
       (id) =>
-        `<span class="item"><span class="key square" style="background:${CLUB_COLORS[id]}"></span>${labels[id]}</span>`,
+        `<span class="item"><span class="key square" style="background:${colorFor(id)}"></span>${escapeHtml(labels[id])}</span>`,
     )
     .join('');
 }
@@ -169,14 +216,14 @@ function renderDivergence(rows) {
   const usable = rows.filter((r) => r.fanDocuments > 0 && r.mediaDocuments > 0);
 
   if (usable.length === 0) {
-    const off = state.meta.collectors.filter((c) => !c.configured || c.reason);
+    const off = state.meta.collectors.filter((c) => c.reason);
     host.innerHTML = `
       <div class="note">
         <b>Nog geen fanbronnen actief.</b> Deze vergelijking heeft zowel mediaberichten als
         fanreacties nodig. Op dit moment komt alles uit de media, dus er valt niets te vergelijken.
         <p style="margin:12px 0 0">Schakel een fanbron in:</p>
         <ul style="margin:6px 0 0;padding-left:20px">
-          ${off.map((c) => `<li><b>${c.id}</b> — ${c.reason ?? 'niet geconfigureerd'}</li>`).join('')}
+          ${off.map((c) => `<li><b>${escapeHtml(c.id)}</b> — ${escapeHtml(c.reason)}</li>`).join('')}
         </ul>
       </div>`;
     return;
@@ -184,28 +231,22 @@ function renderDivergence(rows) {
 
   host.innerHTML = usable
     .map((row) => {
-      const gap = row.gap;
       const reading =
-        Math.abs(gap) < 0.1
+        Math.abs(row.gap) < 0.1
           ? 'Media en fans zitten op één lijn.'
-          : gap < 0
+          : row.gap < 0
             ? 'Fans zijn negatiever dan de pers.'
             : 'Fans zijn positiever dan de pers.';
       return `
-        <div style="padding:14px 0;border-bottom:1px solid var(--border)">
-          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
-            <span style="display:inline-flex;align-items:center;gap:8px;font-weight:620">
-              <span class="crest" style="background:${CLUB_COLORS[row.club]};width:10px;height:10px;border-radius:3px"></span>
-              ${labels[row.club]}
+        <div class="rank-row">
+          <span class="who">
+            <span class="dot" style="background:${colorFor(row.club)}"></span>
+            <span>
+              ${escapeHtml(labels[row.club])}
+              <span class="sub2">Media ${fmt(row.mediaScore)} (${row.mediaDocuments}) · Fans ${fmt(row.fanScore)} (${row.fanDocuments}) — ${reading}</span>
             </span>
-            <span class="delta ${gap > 0 ? 'up' : gap < 0 ? 'down' : 'flat'}">${fmt(gap)}</span>
-          </div>
-          <div style="font-size:.82rem;color:var(--text-secondary);margin-top:6px">
-            Media <b style="color:${polarityColor(row.mediaScore)}">${fmt(row.mediaScore)}</b>
-            (${row.mediaDocuments}) ·
-            Fans <b style="color:${polarityColor(row.fanScore)}">${fmt(row.fanScore)}</b>
-            (${row.fanDocuments}) — ${reading}
-          </div>
+          </span>
+          <span class="val delta ${row.gap > 0 ? 'up' : row.gap < 0 ? 'down' : 'flat'}">${fmt(row.gap)}</span>
         </div>`;
     })
     .join('');
@@ -216,7 +257,6 @@ function renderDivergence(rows) {
 function renderFeed(items) {
   const labels = clubLabels();
   const host = $('#feed');
-
   const visible = items.filter((item) =>
     (item.clubs ?? '').split(',').some((club) => state.clubs.has(club)),
   );
@@ -235,35 +275,28 @@ function renderFeed(items) {
         day: 'numeric',
         month: 'short',
       });
-      const text = item.title || item.body.slice(0, 140);
 
       return `
-        <a class="feed-item" href="${item.url}" target="_blank" rel="noopener noreferrer">
+        <a class="feed-item" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
           <span class="rail" style="background:${polarityColor(item.score)}"></span>
           <span class="val" style="color:${polarityColor(item.score)}">${fmt(item.score)}</span>
           <span>
-            <span class="title">${escapeHtml(text)}</span>
+            <span class="title">${escapeHtml(item.title || item.body.slice(0, 140))}</span>
             <span class="foot">
               ${clubs
                 .map(
                   (club) =>
-                    `<span class="tag club"><span class="dot" style="background:${CLUB_COLORS[club]}"></span>${labels[club]}</span>`,
+                    `<span class="tag club"><span class="dot" style="background:${colorFor(club)}"></span>${escapeHtml(labels[club])}</span>`,
                 )
                 .join('')}
-              ${topics.map((topic) => `<span class="tag">${state.meta.topics[topic] ?? topic}</span>`).join('')}
+              ${topics.map((t) => `<span class="tag">${escapeHtml(state.meta.topics[t] ?? t)}</span>`).join('')}
               ${item.ambiguous ? '<span class="tag warn">mogelijk ironisch</span>' : ''}
-              <span>${item.sourceName} · ${when}</span>
+              <span>${escapeHtml(item.sourceName)} · ${when}</span>
             </span>
           </span>
         </a>`;
     })
     .join('');
-}
-
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
 }
 
 /* ---------------------------------------------------------------- sources */
@@ -274,8 +307,8 @@ function renderCollectors() {
       (collector) => `
         <div class="source-status">
           <span class="dot ${collector.configured ? 'on' : 'off'}"></span>
-          <b style="min-width:74px">${collector.id}</b>
-          <span class="why">${collector.reason ?? 'Actief'}</span>
+          <b style="min-width:74px">${escapeHtml(collector.id)}</b>
+          <span class="why">${escapeHtml(collector.reason ?? 'Actief')}</span>
         </div>`,
     )
     .join('');
@@ -287,7 +320,7 @@ function renderSourceTable(sources) {
       (source) => `
         <tr>
           <td>${escapeHtml(source.sourceName)}</td>
-          <td>${source.sourceKind}</td>
+          <td>${escapeHtml(source.sourceKind)}</td>
           <td class="num">${source.documents}</td>
           <td class="num" style="color:${polarityColor(source.score)}">${fmt(source.score)}</td>
         </tr>`,
@@ -295,61 +328,414 @@ function renderSourceTable(sources) {
     .join('');
 }
 
+/* ----------------------------------------------------------- league table */
+
+function renderLeagueTable(rows) {
+  $('#league-table tbody').innerHTML = rows
+    .map((row, index) => {
+      const diff = row.goalsFor - row.goalsAgainst;
+      const mood = row.documents
+        ? `<span style="color:${polarityColor(row.sentiment)}">${fmt(row.sentiment)}</span> <span style="color:var(--text-muted)">(${row.documents})</span>`
+        : '<span style="color:var(--text-muted)">—</span>';
+      return `
+        <tr class="${state.clubs.has(row.club) ? 'highlight' : ''}">
+          <td class="num">${index + 1}</td>
+          <td><span class="clubcell"><span class="dot" style="background:${colorFor(row.club)}"></span>${escapeHtml(row.name)}</span></td>
+          <td class="num">${row.played}</td>
+          <td class="num">${row.won}</td>
+          <td class="num">${row.drawn}</td>
+          <td class="num">${row.lost}</td>
+          <td class="num">${diff >= 0 ? '+' : ''}${diff}</td>
+          <td class="num"><b>${row.points}</b></td>
+          <td class="num">${mood}</td>
+        </tr>`;
+    })
+    .join('');
+}
+
+/* --------------------------------------------------------------- pressure */
+
+const BAND_COLOR = {
+  safe: 'var(--pos)',
+  watch: 'var(--pos-soft)',
+  warm: 'var(--neutral)',
+  hot: 'var(--neg)',
+  critical: 'var(--neg-strong)',
+};
+const BAND_LABEL = {
+  safe: 'veilig',
+  watch: 'let op',
+  warm: 'onrustig',
+  hot: 'heet',
+  critical: 'kritiek',
+};
+
+function renderPressure(rows) {
+  $('#pressure').innerHTML = rows
+    .map(
+      (row) => `
+      <div class="baro">
+        <span class="who">
+          <span class="crest" style="background:${colorFor(row.club)}"></span>
+          ${escapeHtml(row.name)}
+        </span>
+        <span class="track">
+          <span class="fill" style="width:${row.index}%;background:${BAND_COLOR[row.band]}"></span>
+        </span>
+        <span class="idx" style="color:${BAND_COLOR[row.band]}">${row.index.toFixed(0)}</span>
+        <span class="detail">
+          <span>${BAND_LABEL[row.band]}</span>
+          ${formBadge(row.recentForm)}
+          <span>${row.pointsPerGame === null ? 'geen uitslagen' : `${row.pointsPerGame.toFixed(2)} ptn/duel`}</span>
+          <span>trainerssentiment ${row.coachDocuments >= 3 ? fmt(row.coachSentiment) : 'te weinig data'}</span>
+          <span>${row.coverage} berichten</span>
+        </span>
+      </div>`,
+    )
+    .join('');
+}
+
+/* ------------------------------------------------------------- reactivity */
+
+function renderReactivity(rows) {
+  const host = $('#reactivity');
+  if (rows.length === 0) {
+    host.innerHTML = coverageNote('Deze analyse');
+    return;
+  }
+
+  const max = Math.max(...rows.map((r) => r.swing), 0.2);
+
+  host.innerHTML = rows
+    .slice(0, 10)
+    .map((row) => {
+      const lane = (value, color) => {
+        if (value === null) return '';
+        const width = (Math.abs(value) / max) * 50;
+        const left = value >= 0 ? 50 : 50 - width;
+        return `<i style="left:${left}%;width:${width}%;background:${color}"></i>`;
+      };
+      return `
+        <div class="rank-row" style="grid-template-columns:1fr;gap:6px">
+          <span class="who" style="justify-content:space-between">
+            <span style="display:inline-flex;align-items:center;gap:9px">
+              <span class="dot" style="background:${colorFor(row.club)}"></span>
+              ${escapeHtml(row.name)}
+            </span>
+            <span class="val">${row.swing.toFixed(2)} <span style="color:var(--text-muted);font-weight:400">gem. uitslag · ${row.samples} duels</span></span>
+          </span>
+          <div class="swing-bar"><span class="name">Winst</span><span class="lane">${lane(row.afterWin, 'var(--pos)')}</span><span class="cap">${row.afterWin === null ? '—' : fmt(row.afterWin)}</span></div>
+          <div class="swing-bar"><span class="name">Gelijk</span><span class="lane">${lane(row.afterDraw, 'var(--neutral)')}</span><span class="cap">${row.afterDraw === null ? '—' : fmt(row.afterDraw)}</span></div>
+          <div class="swing-bar"><span class="name">Verlies</span><span class="lane">${lane(row.afterLoss, 'var(--neg)')}</span><span class="cap">${row.afterLoss === null ? '—' : fmt(row.afterLoss)}</span></div>
+        </div>`;
+    })
+    .join('');
+}
+
+/* -------------------------------------------------------------- predictive */
+
+function renderPredictive(rows) {
+  const host = $('#predictive');
+  const usable = rows.filter((r) => r.correlation !== null);
+
+  if (usable.length === 0) {
+    host.innerHTML = coverageNote('Deze analyse');
+    return;
+  }
+
+  host.innerHTML =
+    usable
+      .slice(0, 10)
+      .map(
+        (row) => `
+        <div class="rank-row">
+          <span class="who">
+            <span class="dot" style="background:${colorFor(row.club)}"></span>
+            <span>
+              ${escapeHtml(row.name)}
+              <span class="sub2">
+                vóór winst ${row.meanBeforeWin === null ? '—' : fmt(row.meanBeforeWin)} ·
+                vóór verlies ${row.meanBeforeLoss === null ? '—' : fmt(row.meanBeforeLoss)} ·
+                ${row.samples} duels
+              </span>
+            </span>
+          </span>
+          <span class="val" style="color:${polarityColor(row.correlation)}">r = ${row.correlation.toFixed(2)}</span>
+        </div>`,
+      )
+      .join('') +
+    `<p class="sub" style="margin-top:14px">
+       Een correlatie uit een handvol duels is geen bevinding — let op het aantal duels.
+     </p>`;
+}
+
+/* ---------------------------------------------------------------- players */
+
+function renderPlayers(rows) {
+  const host = $('#players');
+  if (rows.length === 0) {
+    host.innerHTML = '<p class="loading">Nog geen spelers gevonden in deze periode.</p>';
+    return;
+  }
+
+  host.innerHTML = rows
+    .slice(0, 14)
+    .map(
+      (row) => `
+      <div class="rank-row">
+        <span class="who">
+          <span class="dot" style="background:${colorFor(row.club)}"></span>
+          <span>
+            ${escapeHtml(row.player)}
+            <span class="sub2">${escapeHtml(row.clubName ?? '—')} · ${row.mentions} vermeldingen</span>
+          </span>
+        </span>
+        <span class="val" style="color:${polarityColor(row.score)}">${fmt(row.score)}</span>
+      </div>`,
+    )
+    .join('');
+}
+
+function renderTransfers(rows) {
+  const host = $('#transfers');
+  if (rows.length === 0) {
+    host.innerHTML = '<p class="loading">Geen transferberichten met spelersnamen in deze periode.</p>';
+    return;
+  }
+
+  const max = Math.max(...rows.map((r) => r.mentions));
+
+  host.innerHTML = rows
+    .map(
+      (row) => `
+      <div class="rank-row" style="grid-template-columns:1fr;gap:6px">
+        <span class="who" style="justify-content:space-between">
+          <span style="display:inline-flex;align-items:center;gap:9px">
+            <span class="dot" style="background:${colorFor(row.club)}"></span>
+            <span>${escapeHtml(row.player)}<span class="sub2"> ${escapeHtml(row.clubName ?? '')}</span></span>
+          </span>
+          <span class="val" style="color:${polarityColor(row.score)}">${fmt(row.score)}</span>
+        </span>
+        <span class="swing-bar">
+          <span class="lane"><i style="left:0;width:${(row.mentions / max) * 100}%;background:${colorFor(row.club)};opacity:.75"></i></span>
+          <span class="cap">${row.mentions}×</span>
+        </span>
+      </div>`,
+    )
+    .join('');
+}
+
+/* ---------------------------------------------------------------- derbies */
+
+function renderDerbies(rows) {
+  const host = $('#derbies');
+  const withData = rows.filter((r) => r.playedAt);
+
+  if (withData.length === 0) {
+    host.innerHTML =
+      '<div class="note">Nog geen derbygegevens. Draai <code>npm run fixtures</code> om uitslagen op te halen.</div>';
+    return;
+  }
+
+  const note = state.meta.coverage?.overlappingMatches ? '' : coverageNote('De stemmingsverschuiving');
+
+  host.innerHTML = note + withData
+    .map((derby) => {
+      const when = new Date(derby.playedAt).toLocaleDateString('nl-NL', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+      const sides = derby.sides
+        .map(
+          (side) => `
+          <div class="side">
+            <div class="nm"><span class="crest" style="background:${colorFor(side.club)}"></span>${escapeHtml(side.name)}</div>
+            <div class="ba">
+              <span>vóór ${fmt(side.before)}</span>
+              <span>→</span>
+              <b style="color:${polarityColor(side.after)}">${fmt(side.after)}</b>
+              <span class="delta ${side.swing > 0 ? 'up' : side.swing < 0 ? 'down' : 'flat'}">${fmt(side.swing)}</span>
+            </div>
+            <div class="sub" style="margin-top:6px">${side.documents} berichten</div>
+          </div>`,
+        )
+        .join('');
+
+      return `
+        <article class="derby">
+          <h3>
+            <span>${escapeHtml(derby.name)}</span>
+            <span class="when">${when}${derby.scoreline ? ` · ${escapeHtml(derby.scoreline)}` : ''}</span>
+          </h3>
+          <div class="sides">${sides}</div>
+        </article>`;
+    })
+    .join('');
+}
+
+/* ---------------------------------------------------------------- records */
+
+function renderRecords(records) {
+  const host = $('#records');
+  if (records.best.length === 0) {
+    host.innerHTML =
+      '<div class="note">Nog te weinig geschiedenis. Records verschijnen zodra er weken met minstens vijf berichten zijn.</div>';
+    return;
+  }
+
+  const block = (title, rows, color) => `
+    <h3 style="font-size:.82rem;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:18px 0 4px">${title}</h3>
+    ${rows
+      .map(
+        (row) => `
+        <div class="rank-row">
+          <span class="who">
+            <span class="dot" style="background:${colorFor(row.club)}"></span>
+            <span>${escapeHtml(row.name)}<span class="sub2"> week van ${new Date(row.weekStart).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · ${row.documents} berichten</span></span>
+          </span>
+          <span class="val" style="color:${color}">${fmt(row.score)}</span>
+        </div>`,
+      )
+      .join('')}`;
+
+  host.innerHTML =
+    block('Beste weken', records.best, 'var(--pos)') +
+    block('Slechtste weken', records.worst, 'var(--neg)');
+}
+
+function renderAlerts(rows) {
+  const host = $('#alerts');
+  if (rows.length === 0) {
+    host.innerHTML = `
+      <div class="note">
+        Nog geen meldingen afgevuurd. Draai <code>npm run alerts</code> (of zet het in cron) om te
+        controleren; met <code>ALERT_WEBHOOK_URL</code> gaat elke melding naar Slack of Discord.
+      </div>`;
+    return;
+  }
+
+  host.innerHTML = rows
+    .map(
+      (row) => `
+      <div class="rank-row">
+        <span class="who">
+          <span class="dot" style="background:${row.kind === 'drop' ? 'var(--neg)' : 'var(--neg-strong)'}"></span>
+          <span>${escapeHtml(row.message)}<span class="sub2"> ${new Date(row.firedAt + 'Z').toLocaleString('nl-NL')}</span></span>
+        </span>
+        <span class="val">${escapeHtml(row.kind)}</span>
+      </div>`,
+    )
+    .join('');
+}
+
 /* ------------------------------------------------------------------- boot */
 
-async function refresh() {
-  hideTooltip();
-  try {
+/** Each view declares what it needs, so switching tabs fetches only that. */
+const LOADERS = {
+  overview: async () => {
     const clubsParam = { clubs: activeClubs().join(',') };
-    const [overview, timeline, topics, documents, divergence, sources] = await Promise.all([
+    const [overview, timeline, markers, topics, documents, divergence, sources] = await Promise.all([
       api('/api/overview'),
       api('/api/timeseries', clubsParam),
+      api('/api/matches', clubsParam),
       api('/api/topics', clubsParam),
       api('/api/documents', { ...clubsParam, limit: '120' }),
       api('/api/divergence'),
       api('/api/sources'),
     ]);
-
     renderTiles(overview);
-    renderTimeline(timeline);
+    renderTimeline(timeline, markers);
     renderTopics(topics);
     renderDivergence(divergence);
     renderFeed(documents);
     renderSourceTable(sources);
+  },
+
+  league: async () => renderLeagueTable(await api('/api/table')),
+
+  pressure: async () => {
+    const [pressure, react, predict] = await Promise.all([
+      api('/api/pressure'),
+      api('/api/reactivity'),
+      api('/api/predictive'),
+    ]);
+    renderPressure(pressure);
+    renderReactivity(react);
+    renderPredictive(predict);
+  },
+
+  players: async () => {
+    const clubs = activeClubs();
+    const [list, transfers] = await Promise.all([
+      api('/api/players', clubs.length === 1 ? { clubs: clubs[0] } : {}),
+      api('/api/transfers'),
+    ]);
+    renderPlayers(list);
+    renderTransfers(transfers);
+  },
+
+  derbies: async () => renderDerbies(await api('/api/derbies')),
+
+  records: async () => {
+    const [records, alerts] = await Promise.all([api('/api/records'), api('/api/alerts')]);
+    renderRecords(records);
+    renderAlerts(alerts);
+  },
+};
+
+async function refresh() {
+  hideTooltip();
+  try {
+    await LOADERS[state.view]();
   } catch (error) {
-    $('#tiles').innerHTML = `<p class="loading">Kon data niet laden: ${escapeHtml(error.message)}</p>`;
+    const host = $(`.view[data-view="${state.view}"]`);
+    host.insertAdjacentHTML(
+      'afterbegin',
+      `<div class="note" style="margin-bottom:16px"><b>Kon data niet laden.</b> ${escapeHtml(error.message)}</div>`,
+    );
+  }
+}
+
+function setView(view) {
+  state.view = view;
+  for (const tab of $$('.tab')) tab.setAttribute('aria-selected', String(tab.dataset.view === view));
+  for (const panel of $$('.view')) panel.hidden = panel.dataset.view !== view;
+  refresh();
+}
+
+function toggleGroup(selector, key, cast = String) {
+  for (const button of $$(selector)) {
+    button.addEventListener('click', () => {
+      state[key] = cast(button.dataset[key === 'sources' ? 'source' : key]);
+      for (const other of $$(selector)) {
+        other.setAttribute('aria-pressed', String(other === button));
+      }
+      refresh();
+    });
   }
 }
 
 function wireControls() {
-  for (const button of document.querySelectorAll('[data-days]')) {
-    button.addEventListener('click', () => {
-      state.days = Number(button.dataset.days);
-      document
-        .querySelectorAll('[data-days]')
-        .forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
-      refresh();
-    });
-  }
+  toggleGroup('[data-days]', 'days', Number);
+  toggleGroup('[data-source]', 'sources');
+  toggleGroup('[data-smooth]', 'smoothing', Number);
 
-  for (const button of document.querySelectorAll('[data-source]')) {
-    button.addEventListener('click', () => {
-      state.sources = button.dataset.source;
-      document
-        .querySelectorAll('[data-source]')
-        .forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
-      refresh();
-    });
-  }
+  for (const tab of $$('.tab')) tab.addEventListener('click', () => setView(tab.dataset.view));
 
-  // Club toggles keep their colour when others are switched off — the hue
-  // belongs to the club, not to its position in the current selection.
+  // Featured clubs first, then the rest of the league.
   const host = $('#club-filters');
-  for (const club of state.meta.clubs) {
+  const ordered = [...state.meta.clubs].sort(
+    (a, b) => Number(b.featured) - Number(a.featured) || a.shortName.localeCompare(b.shortName),
+  );
+
+  for (const club of ordered) {
     const button = document.createElement('button');
     button.className = 'chip';
-    button.setAttribute('aria-pressed', 'true');
-    button.innerHTML = `<span class="swatch" style="background:${CLUB_COLORS[club.id]}"></span>${club.shortName}`;
+    button.setAttribute('aria-pressed', String(state.clubs.has(club.id)));
+    button.innerHTML = `<span class="swatch" style="background:${colorFor(club.id)}"></span>${escapeHtml(club.shortName)}`;
+    // Colour follows the club, not its position in the current selection, so
+    // toggling one off never repaints the survivors.
     button.addEventListener('click', () => {
       if (state.clubs.has(club.id)) {
         if (state.clubs.size === 1) return;

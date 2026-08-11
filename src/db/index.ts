@@ -23,6 +23,7 @@ export interface StoredDocumentInput {
   clubs: Array<{ club: ClubId; primary: boolean }>;
   sentiment: SentimentResult & { ambiguous: boolean };
   topics: TopicId[];
+  players?: Array<{ name: string; club: ClubId | null }>;
 }
 
 /**
@@ -80,6 +81,11 @@ export function insertDocument(input: StoredDocumentInput): boolean {
       `INSERT OR IGNORE INTO document_topics (document_id, topic) VALUES (?, ?)`,
     );
     for (const topic of data.topics) topicStmt.run(documentId, topic);
+
+    const playerStmt = conn.prepare(
+      `INSERT OR IGNORE INTO document_players (document_id, player, club) VALUES (?, ?, ?)`,
+    );
+    for (const player of data.players ?? []) playerStmt.run(documentId, player.name, player.club);
 
     return true;
   });

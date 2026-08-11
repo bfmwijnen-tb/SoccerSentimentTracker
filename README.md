@@ -1,87 +1,128 @@
 # De Stemming — Eredivisie sentiment tracker
 
-Tracks public sentiment about **Ajax**, **PSV** and **Feyenoord** by collecting Dutch
-football coverage and fan reaction, scoring it with a Dutch-tuned sentiment analyzer, and
-serving an interactive dashboard.
+Tracks public sentiment about all 18 Eredivisie clubs by collecting Dutch football coverage
+and fan reaction, scoring it with a Dutch-tuned sentiment analyzer, anchoring it to match
+results, and serving an interactive dashboard.
+
+---
+
+## Run it
+
+You need [Node.js 20 or newer](https://nodejs.org). Nothing else — no API keys, no database
+to install, no accounts.
 
 ```bash
 npm install
-npm run seed      # collect the last 30 days (no credentials needed)
-npm start         # http://localhost:8787
+npm run setup     # fetches fixtures + the last 30 days of coverage (~1 min)
+npm start         # then open http://localhost:8787
 ```
 
-That works with an empty `.env`. Everything below is about making it better.
+That's it. `npm run setup` is safe to re-run at any time.
+
+**Keep it up to date** — RSS feeds only carry a day or two, so history builds forward from
+your first run. One cron line keeps it fed:
+
+```cron
+*/30 * * * * cd /path/to/SoccerSentimentTracker && npm run collect >> collect.log 2>&1
+0    6 * * * cd /path/to/SoccerSentimentTracker && npm run fixtures >> collect.log 2>&1
+```
+
+<details>
+<summary><strong>Something went wrong?</strong></summary>
+
+| Symptom | Fix |
+|---|---|
+| `command not found: npm` | Install Node.js 20+ from nodejs.org |
+| `better-sqlite3` fails to build | `npm install` needs a C++ toolchain: `apt install build-essential` (Linux) or Xcode command line tools (macOS) |
+| Port 8787 already in use | `PORT=9000 npm start` |
+| Charts are empty | Run `npm run setup` first — the database starts empty |
+| "Media versus fans" says no fan sources | Expected. See *Data sources* below |
+| Match-anchored views are empty | Expected until fixtures and collected documents cover the same dates. The dashboard shows you both ranges |
+
+Start over from scratch with `rm -rf data/ && npm run setup`.
+</details>
+
+### Commands
+
+```
+npm run setup                   First run: fixtures + a 30-day window
+npm run collect  [--days 7]     Fetch, score and store new documents
+npm run fixtures                Refresh Eredivisie fixtures and results
+npm run relex                   Re-run analysis over stored documents
+npm run rescore  [--limit 200]  Re-score ambiguous documents with Claude
+npm run stats    [--days 30]    Current standings in the terminal
+npm run table    [--days 30]    League table with a sentiment column
+npm run pressure [--days 30]    Manager pressure index
+npm run alerts   [--dry-run]    Check sentiment alerts, fire webhooks
+npm start                       Serve the dashboard on :8787
+npm test                        Run the test suite
+```
 
 ---
 
 ## Is this actually possible?
 
-Yes, with one important caveat that shapes the whole design: **the platforms with the best
-fan sentiment are the hardest to collect from, and the sources that are trivial to collect
+Yes, with one caveat that shapes the whole design: **the platforms with the best fan
+sentiment are the hardest to collect from, and the sources that are trivial to collect
 measure something subtly different.**
 
-| Source | Status | What it actually measures |
+| Source | Status | What it measures |
 |---|---|---|
-| Dutch football RSS (11 feeds) | ✅ **Works now, no credentials** | *Media tone* — how the press is writing about a club |
-| Reddit (r/Ajax, r/PSV, r/Feyenoord, r/Eredivisie) | 🔑 Needs a free OAuth app | Genuine fan reaction, match-thread culture. Skews English on club subs |
-| YouTube comments | 🔑 Needs a free API key | The most *Dutch* social source — comments under Eredivisie highlights |
-| Bluesky | ⚠️ Free, but IP-dependent | Microblog reaction; the practical X/Twitter replacement |
-| X / Twitter | ❌ Not implemented | API starts around $200/month — out of reach for a hobby project |
+| Dutch football RSS (11 feeds) | ✅ **Works now, no credentials** | *Media tone* — how the press writes about a club |
+| Eredivisie fixtures & results | ✅ **Works now, no credentials** | Match dates, scorelines, form |
+| Reddit (r/Ajax, r/PSV, r/Feyenoord, r/Eredivisie) | 🔑 Free OAuth app | Genuine fan reaction. Skews English on club subs |
+| YouTube comments | 🔑 Free API key | The most *Dutch* social source |
+| Bluesky | ⚠️ Free, but IP-dependent | The practical X/Twitter replacement |
+| X / Twitter | ❌ Not implemented | API starts around $200/month |
 
-The distinction in that last column is the single most important thing to understand about
-this project. Press coverage is written to be measured — it is edited, hedged, and
-professionally neutral. Fan reaction is not. A club whose press is calm while its fans are
-furious is in a completely different situation from one where both agree, and the dashboard
-has a **Media versus fans** panel that exists to surface exactly that gap.
+That last column is the most important thing to understand here. Press coverage is written
+to be measured — edited, hedged, professionally neutral. Fan reaction is not. A club whose
+press is calm while its fans are furious is in a completely different situation from one
+where both agree, and the **Media versus fans** panel exists to surface exactly that gap.
 
 Out of the box you only get the media half. That is a real limitation, stated plainly on the
-dashboard itself rather than hidden.
+dashboard rather than hidden.
 
 ### Why some sources need credentials
 
-Reddit and Bluesky both refuse anonymous requests from datacenter IPs. This is not a
-blocker you can prompt your way around — it is an anti-bot measure on their side. From a
-home connection Bluesky's public search works fine; from a VPS it returns 403. Reddit's
-OAuth app is free and takes about two minutes to create, and it is the reliable path
-everywhere.
+Reddit and Bluesky both refuse anonymous requests from datacenter IPs — an anti-bot measure
+on their side, not something you can prompt your way around. From a home connection
+Bluesky's public search works; from a VPS it returns 403. Reddit's OAuth app is free, takes
+about two minutes, and is the reliable path everywhere.
 
-There is also a subtler one worth knowing about: several large Dutch publishers (DPG Media's
-`ad.nl` and `nu.nl`, plus `telegraaf.nl`) sit behind bot filters that fingerprint the **TLS
+There is a subtler one worth knowing: several large Dutch publishers (DPG Media's `ad.nl`
+and `nu.nl`, plus `telegraaf.nl`) sit behind bot filters that fingerprint the **TLS
 handshake** rather than the headers. Node's HTTP client gets a 403 no matter what
 `User-Agent` it sends, while an ordinary `curl` of the same URL with the same identifying
 User-Agent succeeds. `src/collectors/http.ts` retries through curl when that happens — same
-identity, same politeness delay, just a different HTTP client.
+identity, same politeness delay, different HTTP client.
 
 ### Legal and ethical position
 
-This matters and is easy to get wrong.
-
-- **Only public content is collected.** No logins, no paywall circumvention, no private groups.
-- **Only what the publisher syndicates.** RSS feeds exist to be read by machines; the
-  collector reads the feed, not the article body behind it.
+- **Only public content.** No logins, no paywall circumvention, no private groups.
+- **Only what the publisher syndicates.** RSS exists to be read by machines; the collector
+  reads the feed, not the article behind it.
 - **One request per host per 1.2s**, with an identifying User-Agent carrying a contact URL.
   Set a real one in `.env`.
-- **Official APIs are used wherever they exist** (Reddit OAuth, YouTube Data API, Bluesky
-  XRPC) rather than scraping the HTML — this is both more robust and more respectful.
-- **Author names are stored** because attribution matters for a feed view, but this is
-  personal data under the GDPR. If you publish this or keep it long-term, drop the `author`
-  column or hash it — and note that aggregate sentiment does not need it at all.
-- **Do not present this as fact about individuals.** It measures the tone of public posts,
-  not what any person believes.
-
-If you deploy this publicly, read each platform's ToS yourself. Reddit and YouTube both
-permit this kind of analysis under their API terms; scraping a forum that forbids it in its
-robots.txt is a different matter, which is why no forum scraper ships here.
+- **Official APIs wherever they exist** (Reddit OAuth, YouTube Data API, Bluesky XRPC)
+  rather than scraping HTML.
+- **Author names are stored** for the feed view, but that is personal data under the GDPR.
+  If you publish this or keep it long-term, drop or hash the `author` column — aggregate
+  sentiment does not need it.
+- **Player and manager views are aggregate opinion about public figures' professional
+  performance**, and are framed that way. The pressure index in particular is a mood
+  indicator built from public commentary, **not a prediction about anyone's job**.
+- **Do not present any of this as fact about individuals.** It measures the tone of public
+  posts.
 
 ---
 
 ## Why the sentiment analyzer is hand-built
 
-This is the part that most determines whether the numbers mean anything, and the obvious
-approaches all fail:
+The obvious approaches all fail:
 
 - **English sentiment models score Dutch text near zero.** The failure is silent — you get a
-  flat, neutral, entirely meaningless chart that looks perfectly plausible.
+  flat, neutral, meaningless chart that looks perfectly plausible.
 - **General Dutch sentiment sets** (Pattern, DuOMan) are trained on product reviews. They
   score `dramatisch` and `kansloos` as mild, when in football they are the strongest
   negatives a fan uses.
@@ -90,15 +131,14 @@ approaches all fail:
 
 So `src/sentiment/lexicon.nl.ts` is a purpose-built Dutch football lexicon: ~250 weighted
 terms, multi-word phrases (`om te janken`, `klasse apart`), intensifiers, diminishers,
-negation, contrast markers, emoji, and the terrace register that fans actually type. The
-analyzer applies negation and intensifier lookback, weights the clause after a contrast
-marker (`maar`, `helaas`) above the concession before it, and normalises with `tanh` so
-scores stay open-ended instead of pinning at ±1.
+negation, contrast markers, emoji, and the terrace register fans actually type. The analyzer
+weights the clause after a contrast marker (`maar`, `helaas`) above the concession before
+it, and normalises with `tanh` so scores stay open-ended instead of pinning at ±1.
 
 Dutch inflection gets two special cases, because both are common in exactly these words:
 consonant doubling (`zwak` → `zwakke`) and vowel shortening (`groot` → `grote`). Without
-them, "zwakke wedstrijd" scores zero — the term is right there in the lexicon and the
-inflected form never reaches it.
+them, "zwakke wedstrijd" scores zero — the term is in the lexicon and the inflected form
+never reaches it.
 
 ### The one thing a lexicon cannot do
 
@@ -106,150 +146,120 @@ Irony. Dutch football commentary runs on it, and *"geweldig hoor, weer zo'n bril
 wissel"* scores strongly positive on its face while being about the most negative thing a
 fan can say.
 
-The analyzer does not pretend to solve this. It **flags** documents it cannot resolve —
-irony markers, or high emotional magnitude with a near-zero net score — and those are the
-only ones sent to Claude for a second read:
+The analyzer does not pretend to solve this. It **flags** what it cannot resolve — irony
+markers, or high emotional magnitude with a near-zero net score — and only those go to
+Claude for a second read:
 
 ```bash
 ANTHROPIC_API_KEY=... npm run rescore
 ```
 
-On a typical week that is well under 10% of the corpus, which keeps it cheap while fixing
-the cases where the lexicon is not merely imprecise but actively backwards. Flagged items
-are marked *"mogelijk ironisch"* in the feed whether or not you run the pass.
+Typically under 10% of the corpus, which keeps it cheap while fixing the cases where the
+lexicon is not merely imprecise but backwards. Flagged items are marked *"mogelijk
+ironisch"* in the feed whether or not you run the pass.
 
-Expect roughly 70–75% accuracy from the lexicon alone, and appreciably better on the
-flagged subset with the Claude pass. It is good enough for tracking *movement and
-direction*, which is what the dashboard is for. It is not good enough to quote a single
-document's score as fact.
+Expect roughly 70–75% accuracy from the lexicon alone. Good enough for tracking movement and
+direction, which is what the dashboard is for. Not good enough to quote a single document's
+score as fact.
+
+---
+
+## What's on the dashboard
+
+**Overzicht** — sentiment per club, the fluent timeline with match markers, topic breakdown,
+media-versus-fans, live feed, source health.
+
+**Competitie** — the league table with a sentiment column. The interesting row is the
+mismatch: fourth place with a fanbase at −0.4 is a different situation from fourth at +0.3.
+
+**Druk** — the **ontslagbarometer** (manager pressure), whether fans overreact (sentiment
+swing per result), and whether pre-match mood predicts results at all.
+
+**Spelers** — most-discussed players and transfer hype. Names are extracted from the text
+rather than matched against a squad list, so loan targets and youth debutants appear the
+moment they are written about.
+
+**Derby's** — each rivalry's last meeting with both fanbases either side of kick-off.
+
+**Records** — best and worst weeks on record, plus fired alerts.
 
 ---
 
 ## Design decisions worth knowing
 
 **Clubs are not drawn in their own colours.** Ajax, PSV and Feyenoord all play in
-red-and-white — three near-identical reds on one axis would be unreadable normally and
-hopeless under colour-vision deficiency. Chart series use a validated categorical palette
+red-and-white — three near-identical reds on one axis would be unreadable, and hopeless
+under colour-vision deficiency. Chart series use a validated categorical palette
 (orange / aqua / violet) and club identity is carried by crest chips and direct labels.
 
 The club palette also deliberately avoids blue and red, because those two carry *sentiment
-polarity* everywhere else on the page. Keeping the two palettes disjoint means a colour
-never means "Ajax" in one chart and "positive" in the next. Both palettes are validated for
-CVD separation, chroma, lightness band and contrast in light and dark mode.
+polarity* everywhere else on the page. Keeping the palettes disjoint means a colour never
+means "Ajax" in one chart and "positive" in the next. Both are validated for CVD separation,
+chroma, lightness band and contrast in light and dark mode.
 
-**Gaps in the timeline are left as gaps.** If nothing was published about a club on a given
-day, the line breaks rather than interpolating. Drawing a straight line across a silent week
-would invent sentiment that was never measured.
+**Only three clubs can be charted at once.** The validated palette carries exactly three
+all-pairs-distinct slots; a fourth would put two confusable colours on one axis. The other
+15 clubs appear in the league table and the barometer, which identify by name rather than
+hue.
+
+**Lines are smoothed, and gaps are bridged — but the tooltip never lies.** Daily sentiment
+is genuinely spiky, so the timeline applies a centred rolling mean (togglable: raw / 3d / 7d)
+and draws a monotone cubic curve, which cannot overshoot the ±1 the data can actually
+occupy. Days with no coverage are interpolated so the line stays continuous, and the tooltip
+says *"geen data"* for those days rather than reporting an inferred number as measured.
 
 **Sentiment is weighted, not averaged.** `confidence × (1 + ln(1 + engagement))` — a
-throwaway one-line comment should not count the same as a widely-upvoted verdict, and a
-document the analyzer barely understood should not count the same as one it read
-confidently. The logarithm matters: engagement is power-law distributed, so a linear weight
-would let one viral post dictate a club's entire daily mood.
+throwaway comment should not count the same as a widely-upvoted verdict, and a document the
+analyzer barely understood should not count the same as one it read confidently. The
+logarithm matters: engagement is power-law distributed, so a linear weight would let one
+viral post dictate a club's daily mood.
 
-**A document about two clubs counts for both.** A Klassieker match report genuinely is about
-Ajax and Feyenoord; only the club named in the title is marked primary, so "Ajax beat PSV"
-does not read as PSV content.
+**Thin data is never allowed to look like a finding.** The pressure index drops the trend
+component below a coverage floor, the reactivity view requires documents on both sides of a
+match, the predictive view reports its sample count, and the player board requires several
+mentions before a name appears.
 
-**Sentiment is stored separately from documents**, so a lexicon change rolls out over the
-existing corpus without re-fetching anything (`npm run relex`).
+**A document about two clubs counts for both.** A Klassieker report genuinely is about Ajax
+and Feyenoord; only the club named in the title is marked primary.
+
+**Analysis is stored separately from documents**, so a lexicon, topic or extractor change
+rolls out over the existing corpus without re-fetching (`npm run relex`).
 
 ---
-
-## Commands
-
-```
-npm run seed                    First run: collect a 30-day window
-npm run collect  [--days 7]     Fetch, score and store new documents
-npm run relex                   Re-apply the lexicon to stored documents
-npm run rescore  [--limit 200]  Re-score ambiguous documents with Claude
-npm run stats    [--days 30]    Print current standings in the terminal
-npm start                       Serve the dashboard on :8787
-npm test                        Run the analyzer/parser tests
-```
-
-Keep it current with a cron entry:
-
-```cron
-*/30 * * * * cd /path/to/SoccerSentimentTracker && npm run collect >> collect.log 2>&1
-```
 
 ## Layout
 
 ```
 src/
-  clubs.ts              Club definitions, alias matching, false-positive guards
+  clubs.ts              18 clubs, alias matching, derbies, false-positive guards
   collectors/           One module per source; add a file, register it in index.ts
-  sentiment/            Dutch lexicon, analyzer, topic tagging, optional Claude pass
+    fixtures.ts         Eredivisie results — the anchor for every match-based view
+  sentiment/            Dutch lexicon, analyzer, topics, player names, Claude pass
+  analysis/             Pressure, reactivity, predictive, derbies, records, players
+  alerts.ts             Threshold checks + webhook delivery
   db/                   SQLite schema and the query layer behind the API
   server/               Static file server + JSON API
 web/                    Dashboard (no build step — plain ES modules and CSS)
 ```
 
 Adding a source means implementing the `Collector` interface in `src/types.ts` and
-registering it. Everything downstream — club attribution, scoring, topic tagging, storage,
-the API and the dashboard — picks it up automatically.
-
----
-
-## Ideas worth building next
-
-Roughly in order of value-for-effort.
-
-**1. Anchor sentiment to fixtures.** Right now you see a dip without knowing why. Pull the
-Eredivisie fixture list, mark match days on the timeline, and every spike gets an
-explanation. This is the single highest-value addition and makes almost everything below
-possible.
-
-**2. Ontslagbarometer (sack-o-meter).** Combine coach-topic sentiment, its trend, and recent
-results into a manager-pressure index. Fanbases telegraph a sacking weeks ahead, and this is
-the kind of number people actually share.
-
-**3. Do fans overreact?** With fixtures in place, measure sentiment change against result
-quality. Which fanbase swings hardest per goal conceded? The dashboard already computes a
-volatility figure per club as a first step toward this.
-
-**4. Player-level sentiment.** Extract player names and track individuals. "Who is the most
-criticised player at each club this month" is a genuinely interesting question, and squad
-lists make the extraction tractable. Handle this carefully — it is aggregate opinion about
-public figures' professional performance, and should be framed that way.
-
-**5. Transfer hype tracker.** Transfer topics are already tagged. Track rumour volume and
-sentiment per target and you get a "how much do fans want this signing" meter — plus, over a
-window, which outlets' rumours actually come true.
-
-**6. Predictive signal.** Does pre-match fan sentiment carry information about results that
-odds do not? Probably weak, possibly not zero, and a genuinely interesting thing to test
-honestly.
-
-**7. Derby mode.** Klassieker and Rotterdam-derby weeks have their own emotional physics.
-A dedicated view — sentiment in the 72 hours either side, both fanbases side by side — is
-the most shareable artefact here.
-
-**8. Expand to all 18 Eredivisie clubs.** `src/clubs.ts` is already a list; the work is
-aliases and disambiguation (`Go Ahead Eagles` and `NEC` are harder to match than `Feyenoord`).
-The three-slot chart palette caps at three series, so this needs small multiples or a
-league-table view rather than more lines.
-
-**9. Alerting.** Webhook or email when a club's sentiment drops more than X in 24 hours.
-Turns the dashboard from something you visit into something that tells you when to look.
-
-**10. Historical leaderboards.** "Worst week in Ajax history" (since collection began) writes
-its own headlines once you have a year of data.
-
-Two things I would *not* build: a public leaderboard ranking fanbases by negativity (it
-rewards the wrong thing and invites brigading), and anything that surfaces individual
-non-public accounts. Aggregate is the right altitude for this.
+registering it. Everything downstream — club attribution, scoring, topics, player
+extraction, storage, the API and the dashboard — picks it up automatically.
 
 ---
 
 ## Known limitations
 
 - Out of the box this measures media tone, not fan sentiment. The dashboard says so.
-- The lexicon is tuned for Dutch. English-language Reddit comments score weakly; language is
-  recorded per document so you can filter.
-- RSS feeds carry roughly the last 24–48 hours, so history builds forward from your first
-  run rather than backfilling. The 90-day view fills in over time.
-- Google News items are title-only, which is why many feed entries score exactly 0.00 —
-  there is not enough text to read. This is honest rather than hidden.
+- The lexicon is tuned for Dutch. English Reddit comments score weakly; language is recorded
+  per document so you can filter.
+- RSS carries roughly 24–48 hours, so history builds forward from your first run rather than
+  backfilling. The 90-day and season views fill in over time.
+- **Match-anchored views need fixtures and documents to cover the same dates.** Fixture data
+  reaches back a full season while collection starts today, so early on the overlap is zero
+  and those panels say so, showing you both date ranges.
+- Google News items are title-only, which is why some feed entries score exactly 0.00 —
+  not enough text to read.
+- Player names are extracted heuristically. Prominent journalists occasionally appear
+  alongside players; a minimum mention count keeps one-off noise off the board.
 - Sarcasm is flagged, not solved, unless you enable the Claude pass.

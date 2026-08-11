@@ -37,6 +37,12 @@ export const config = {
     identifier: env('BLUESKY_IDENTIFIER'),
     appPassword: env('BLUESKY_APP_PASSWORD'),
   },
+  alerts: {
+    webhookUrl: env('ALERT_WEBHOOK_URL'),
+    dropThreshold: Number(env('ALERT_DROP_THRESHOLD', '0.25')),
+    floor: Number(env('ALERT_FLOOR', '-0.35')),
+  },
+
   llm: {
     apiKey: env('ANTHROPIC_API_KEY'),
     model: env('LLM_MODEL', 'claude-opus-5'),

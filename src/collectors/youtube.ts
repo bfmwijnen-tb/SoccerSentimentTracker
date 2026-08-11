@@ -1,6 +1,6 @@
 import type { Collector, CollectorContext, RawDocument } from '../types.ts';
 import { config } from '../config.ts';
-import { CLUBS } from '../clubs.ts';
+import { FEATURED_CLUBS } from '../clubs.ts';
 import { politeFetch, decodeEntities } from './http.ts';
 
 /**
@@ -39,7 +39,7 @@ export class YouTubeCollector implements Collector {
   async collect(ctx: CollectorContext): Promise<RawDocument[]> {
     const documents: RawDocument[] = [];
 
-    for (const club of CLUBS) {
+    for (const club of FEATURED_CLUBS) {
       try {
         const search = await this.api<{
           items?: Array<{ id?: { videoId?: string }; snippet?: { title?: string } }>;

@@ -3,6 +3,7 @@ import { throttle } from './collectors/http.ts';
 import { detectClubs } from './clubs.ts';
 import { analyzeDocument } from './sentiment/analyzer.ts';
 import { detectTopics } from './sentiment/topics.ts';
+import { extractPlayers } from './sentiment/players.ts';
 import { insertDocument, startRun, finishRun } from './db/index.ts';
 import type { CollectorContext } from './types.ts';
 
@@ -58,10 +59,15 @@ export async function collectAll(sinceDays = 7): Promise<CollectSummary[]> {
         if (clubs.length === 0) continue;
         relevant += 1;
 
+        const text = `${doc.title ?? ''}. ${doc.body}`;
         const sentiment = analyzeDocument(doc.title, doc.body);
-        const topics = detectTopics(`${doc.title ?? ''} ${doc.body}`);
+        const topics = detectTopics(text);
+        // Attribute players to the document's primary club so a leaderboard can
+        // be scoped per club without re-reading the text.
+        const primaryClub = clubs.find((c) => c.primary)?.club ?? clubs[0]?.club ?? null;
+        const players = extractPlayers(text).map((name) => ({ name, club: primaryClub }));
 
-        if (insertDocument({ doc, clubs, sentiment, topics })) inserted += 1;
+        if (insertDocument({ doc, clubs, sentiment, topics, players })) inserted += 1;
       }
 
       finishRun(runId, { fetched, inserted });

@@ -123,13 +123,25 @@ export function decodeEntities(text: string): string {
     .replace(/&([a-z]+);/gi, (match, name: string) => ENTITIES[name.toLowerCase()] ?? match);
 }
 
+function removeTags(text: string): string {
+  return text
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ');
+}
+
+/**
+ * Strips markup, entity-encoded markup included.
+ *
+ * Order matters here. Google News (and several other feeds) put HTML inside a
+ * CDATA block *and* entity-encode it, so the description arrives as
+ * `&lt;a href="..."&gt;`. Decoding after stripping turned that back into live
+ * `<a href>` markup in the stored body, which polluted both the sentiment score
+ * and player extraction with tag names and colour codes. Stripping either side
+ * of the decode handles plain and encoded markup alike.
+ */
 export function stripHtml(html: string): string {
-  return decodeEntities(
-    html
-      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' '),
-  )
+  return removeTags(decodeEntities(removeTags(html)))
     .replace(/\s+/g, ' ')
     .trim();
 }

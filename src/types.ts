@@ -1,4 +1,37 @@
-export type ClubId = 'ajax' | 'psv' | 'feyenoord';
+export type ClubId =
+  | 'ajax'
+  | 'psv'
+  | 'feyenoord'
+  | 'az'
+  | 'twente'
+  | 'utrecht'
+  | 'groningen'
+  | 'heerenveen'
+  | 'nec'
+  | 'goahead'
+  | 'sparta'
+  | 'fortuna'
+  | 'heracles'
+  | 'nac'
+  | 'pec'
+  | 'volendam'
+  | 'excelsior'
+  | 'telstar';
+
+export type MatchOutcome = 'win' | 'draw' | 'loss';
+
+export interface Fixture {
+  id: number;
+  season: string;
+  round: string | null;
+  playedAt: string;
+  homeClub: ClubId | null;
+  awayClub: ClubId | null;
+  homeName: string;
+  awayName: string;
+  homeGoals: number | null;
+  awayGoals: number | null;
+}
 
 export type SourceKind = 'news' | 'reddit' | 'youtube' | 'bluesky' | 'forum';
 
