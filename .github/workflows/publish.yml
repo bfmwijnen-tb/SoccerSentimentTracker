@@ -29,6 +29,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Turns GitHub Pages on via the API if it is not already enabled.
+      # Without this the build succeeds, the dashboard is built, and only the
+      # final deploy fails with a bare "404 / Not Found" — which reads like a
+      # broken workflow rather than a one-time setting nobody was told to flip.
+      - name: Enable GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+        continue-on-error: true
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -69,6 +79,17 @@ jobs:
         with:
           path: data
           key: sentiment-db-${{ github.run_id }}
+
+      # A plain downloadable copy, independent of Pages. If publishing is
+      # blocked — Pages disabled, an org policy, a private repo without the
+      # right plan — the dashboard is still one click away under the run's
+      # Artifacts section, so a run is never a total loss.
+      - name: Upload downloadable dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard
+          path: dist/stemming.html
+          retention-days: 30
 
       - uses: actions/upload-pages-artifact@v3
         with:
