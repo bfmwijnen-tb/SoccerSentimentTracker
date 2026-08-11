@@ -1,0 +1,128 @@
+/*
+ * Design tokens.
+ *
+ * Colour strategy — two encodings that must never be confused:
+ *
+ *   CLUB IDENTITY (categorical): orange / aqua / violet
+ *   SENTIMENT POLARITY (diverging): blue <-> red, neutral grey midpoint
+ *
+ * The clubs deliberately do NOT use their crest colours. Ajax, PSV and
+ * Feyenoord all play in red-and-white, so three near-identical reds on one axis
+ * would be unreadable — and hopeless under colour-vision deficiency. They also
+ * deliberately skip the blue and red slots, because those two carry polarity
+ * everywhere else on the page; keeping the two palettes disjoint means a colour
+ * never means "Ajax" in one chart and "positive" in the next.
+ *
+ * Both palettes are validated (OKLab CVD separation, chroma floor, lightness
+ * band, contrast) in light and dark. Aqua sits at 2.74:1 on the light surface,
+ * below the 3:1 mark threshold — the relief for that is the direct labels on
+ * every line and the table view under the source panel, both of which ship.
+ */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --surface-0: #f7f6f3;
+  --surface-1: #fcfcfb;
+  --surface-2: #f0efec;
+  --surface-raised: #ffffff;
+  --border: #e2e0da;
+  --border-strong: #c9c6bd;
+
+  /* Ink */
+  --text-primary: #14140f;
+  --text-secondary: #52514e;
+  --text-muted: #85837c;
+
+  /* Club identity — categorical slots 2, 3, 7 */
+  --club-ajax: #eb6834;
+  --club-psv: #1baf7a;
+  --club-feyenoord: #4a3aa7;
+
+  /* Sentiment polarity — diverging */
+  --pos-strong: #1c5cab;
+  --pos: #2a78d6;
+  --pos-soft: #b7d3f6;
+  --neutral: #b5b2a8;
+  --neg-soft: #f5c4c4;
+  --neg: #e34948;
+  --neg-strong: #a92e2d;
+
+  /* Chart furniture */
+  --grid: #e8e6e0;
+  --axis: #c9c6bd;
+
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgb(20 20 15 / 0.05), 0 8px 24px -12px rgb(20 20 15 / 0.15);
+
+  --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Inter, system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+
+    --surface-0: #101013;
+    --surface-1: #16161a;
+    --surface-2: #1e1e23;
+    --surface-raised: #1a1a1f;
+    --border: #2c2c33;
+    --border-strong: #3d3d45;
+
+    --text-primary: #f4f4f2;
+    --text-secondary: #b4b3ad;
+    --text-muted: #83827c;
+
+    --club-ajax: #d95926;
+    --club-psv: #199e70;
+    --club-feyenoord: #9085e9;
+
+    --pos-strong: #6da7ec;
+    --pos: #3987e5;
+    --pos-soft: #1c3f66;
+    --neutral: #55545c;
+    --neg-soft: #5c2a2a;
+    --neg: #e66767;
+    --neg-strong: #f09b9b;
+
+    --grid: #26262c;
+    --axis: #3d3d45;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface-0: #101013;
+  --surface-1: #16161a;
+  --surface-2: #1e1e23;
+  --surface-raised: #1a1a1f;
+  --border: #2c2c33;
+  --border-strong: #3d3d45;
+
+  --text-primary: #f4f4f2;
+  --text-secondary: #b4b3ad;
+  --text-muted: #83827c;
+
+  --club-ajax: #d95926;
+  --club-psv: #199e70;
+  --club-feyenoord: #9085e9;
+
+  --pos-strong: #6da7ec;
+  --pos: #3987e5;
+  --pos-soft: #1c3f66;
+  --neutral: #55545c;
+  --neg-soft: #5c2a2a;
+  --neg: #e66767;
+  --neg-strong: #f09b9b;
+
+  --grid: #26262c;
+  --axis: #3d3d45;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px -12px rgb(0 0 0 / 0.6);
+}

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eredivisie Sentiment — Ajax · PSV · Feyenoord</title>
+    <meta
+      name="description"
+      content="Publiek sentiment over Ajax, PSV en Feyenoord, gemeten uit Nederlandse media, forums en sociale platforms."
+    />
+    <link rel="stylesheet" href="/css/tokens.css" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>"
+    />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div>
+          <h1>De Stemming</h1>
+          <p class="tagline">
+            Publiek sentiment over <strong>Ajax</strong>, <strong>PSV</strong> en
+            <strong>Feyenoord</strong>, gemeten uit Nederlandse voetbalmedia en — waar
+            ingeschakeld — fanreacties op Reddit, YouTube en Bluesky.
+          </p>
+        </div>
+        <button class="chip" id="theme-toggle" aria-label="Wissel donker/licht thema">
+          <span id="theme-icon">◐</span> Thema
+        </button>
+      </header>
+
+      <div class="controls" role="group" aria-label="Filters">
+        <div class="control-group">
+          <span class="control-label">Periode</span>
+          <button class="chip" data-days="7">7d</button>
+          <button class="chip" data-days="30" aria-pressed="true">30d</button>
+          <button class="chip" data-days="90">90d</button>
+        </div>
+        <div class="control-group" id="club-filters">
+          <span class="control-label">Clubs</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="control-group">
+          <span class="control-label">Bron</span>
+          <button class="chip" data-source="" aria-pressed="true">Alles</button>
+          <button class="chip" data-source="news">Media</button>
+          <button class="chip" data-source="reddit,youtube,bluesky">Fans</button>
+        </div>
+      </div>
+
+      <main>
+        <section class="grid tiles" id="tiles" aria-label="Stand per club">
+          <p class="loading">Laden…</p>
+        </section>
+
+        <section class="card" aria-labelledby="timeline-title">
+          <header>
+            <h2 id="timeline-title">Sentiment over tijd</h2>
+            <p class="sub">
+              Dagelijks gewogen gemiddelde. Onderbrekingen in een lijn betekenen dat er die dag
+              niets over die club is gevonden — er wordt niet doorgetrokken.
+            </p>
+          </header>
+          <div class="chart-wrap" id="timeline"></div>
+          <div class="legend" id="timeline-legend"></div>
+        </section>
+
+        <div class="grid split">
+          <section class="card" aria-labelledby="topics-title">
+            <header>
+              <h2 id="topics-title">Waar gaat het over</h2>
+              <p class="sub">
+                Sentiment per onderwerp. Boos zijn over de arbitrage is iets anders dan boos zijn
+                over de clubleiding.
+              </p>
+            </header>
+            <div class="chart-wrap" id="topics"></div>
+            <div class="legend" id="topics-legend"></div>
+          </section>
+
+          <section class="card" aria-labelledby="divergence-title">
+            <header>
+              <h2 id="divergence-title">Media versus fans</h2>
+              <p class="sub">
+                Perscommentaar wordt geschreven om gemeten te worden, fanreacties niet. Het gat
+                ertussen is vaak het interessantste cijfer op de pagina.
+              </p>
+            </header>
+            <div id="divergence"></div>
+          </section>
+        </div>
+
+        <div class="grid split">
+          <section class="card" aria-labelledby="feed-title">
+            <header>
+              <h2 id="feed-title">Wat er binnenkomt</h2>
+              <p class="sub">Meest recente berichten, gekleurd naar sentiment.</p>
+            </header>
+            <div class="feed" id="feed"></div>
+          </section>
+
+          <section class="card" aria-labelledby="sources-title">
+            <header>
+              <h2 id="sources-title">Bronnen</h2>
+              <p class="sub">Wat er meet, en wat er uit staat.</p>
+            </header>
+            <div id="collectors"></div>
+            <details class="table-view">
+              <summary>Toon brontabel</summary>
+              <div class="chart-wrap">
+                <table id="source-table">
+                  <thead>
+                    <tr>
+                      <th>Bron</th>
+                      <th>Type</th>
+                      <th class="num">Berichten</th>
+                      <th class="num">Sentiment</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </details>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
+  </body>
+</html>

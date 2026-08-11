@@ -1,0 +1,31 @@
+{
+  "name": "soccer-sentiment-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public sentiment tracker for Dutch professional football clubs (Ajax, PSV, Feyenoord)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server/index.ts",
+    "start": "tsx src/server/index.ts",
+    "collect": "tsx src/cli.ts collect",
+    "relex": "tsx src/cli.ts relex",
+    "rescore": "tsx src/cli.ts rescore",
+    "stats": "tsx src/cli.ts stats",
+    "seed": "tsx src/cli.ts seed",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "better-sqlite3": "^11.10.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}
