@@ -644,3 +644,152 @@ export function matchMarkers(clubs: ClubId[], days: number): MatchMarker[] {
 
   return markers.sort((a, b) => a.playedAt.localeCompare(b.playedAt));
 }
+
+/* --------------------------------------------------------- season in review */
+
+export interface SeasonRow {
+  club: ClubId;
+  name: string;
+  position: number;
+  played: number;
+  points: number;
+  goalDifference: number;
+  /** Sentiment measured over the season's own months, not the last N days. */
+  sentiment: number;
+  documents: number;
+  /**
+   * Whether this club has enough coverage for its number to be read beside the
+   * others. False rows still show — hiding them would misrepresent the league —
+   * but they are marked so a figure built on forty headlines is not compared
+   * with one built on eight hundred.
+   */
+  comparable: boolean;
+}
+
+export interface SeasonReview {
+  season: string;
+  from: string;
+  to: string;
+  rows: SeasonRow[];
+  /** How many rows carry enough coverage to be compared with each other. */
+  comparableClubs: number;
+}
+
+/** Every season the fixture data covers, newest first. */
+export function seasons(): string[] {
+  return (db().prepare(`SELECT DISTINCT season FROM matches ORDER BY season DESC`).all() as Array<{
+    season: string;
+  }>).map((row) => row.season);
+}
+
+/**
+ * A whole season, standings beside the mood it was played in.
+ *
+ * This exists because the rolling-window views cannot answer "was the title
+ * year visible in the coverage?". A 30- or 90-day window that ends today lands
+ * in the transfer season, where every club reads positive regardless of how it
+ * finished — a club that came fifth still gets a run of "signs promising
+ * striker" headlines. Pinning both numbers to the season's own months is the
+ * only way the two are comparable.
+ *
+ * Deliberately no league-wide correlation between points and sentiment. It was
+ * computed, and it is not stable: across document thresholds it ran -0.13,
+ * -0.09, -0.55, +0.16, +0.72 — it changes sign depending on where the cut is
+ * drawn, so any single value would be a choice of which story to tell. The
+ * reason is coverage volume, which varies more than twentyfold across the
+ * league; a club covered by forty articles and one covered by eight hundred are
+ * not measuring the same thing. Comparing within the well-covered clubs is
+ * sound, and that is what `comparable` marks.
+ */
+export function seasonReview(season = currentSeason()): SeasonReview {
+  // The season's own bounds, taken from the fixtures rather than assumed: a
+  // hardcoded August-to-May would silently mismeasure a season still in
+  // progress, which is exactly when someone looks at this.
+  const bounds = db()
+    .prepare(`SELECT MIN(played_at) AS from_, MAX(played_at) AS to_ FROM matches WHERE season = ?`)
+    .get(season) as { from_: string | null; to_: string | null };
+
+  if (!bounds.from_ || !bounds.to_) {
+    return { season, from: '', to: '', rows: [], comparableClubs: 0 };
+  }
+
+  // A day either side, so the last matchday's reaction is inside the window.
+  const from = new Date(new Date(bounds.from_).getTime() - 864e5).toISOString();
+  const to = new Date(
+    Math.min(new Date(bounds.to_).getTime() + 2 * 864e5, Date.now()),
+  ).toISOString();
+
+  const rows: Array<Omit<SeasonRow, 'position' | 'comparable'>> = [];
+
+  // The fixture source carries the end-of-season play-offs alongside the league
+  // programme, and counting those inflated both games played and points — Ajax
+  // finished "36 games" in a 34-game league, which makes the table wrong rather
+  // than merely generous. Every club plays the same league programme, so the
+  // most common fixture count *is* that programme's length, and the extras are
+  // always the ones played last. No date or round number to hardcode.
+  const roundsPlayed = CLUBS.map((club) => matchesForClub(club.id, { season }).length).filter(
+    (n) => n > 0,
+  );
+  const leagueRounds = modeOf(roundsPlayed);
+
+  for (const club of CLUBS) {
+    const fixtures = matchesForClub(club.id, { season });
+    if (fixtures.length === 0) continue;
+
+    const played = fixtures
+      .slice()
+      .sort((a, b) => a.playedAt.localeCompare(b.playedAt))
+      .slice(0, leagueRounds)
+      .filter((m) => m.outcome !== null);
+    const mood = sentimentBetween(club.id, from, to);
+
+    rows.push({
+      club: club.id,
+      name: club.shortName,
+      played: played.length,
+      points:
+        played.filter((m) => m.outcome === 'win').length * 3 +
+        played.filter((m) => m.outcome === 'draw').length,
+      goalDifference: played.reduce((sum, m) => sum + ((m.goalsFor ?? 0) - (m.goalsAgainst ?? 0)), 0),
+      sentiment: Number(mood.score.toFixed(4)),
+      documents: mood.documents,
+    });
+  }
+
+  const byPoints = [...rows].sort(
+    (a, b) => b.points - a.points || b.goalDifference - a.goalDifference,
+  );
+
+  const withFlag = byPoints.map((row, index) => ({
+    ...row,
+    position: index + 1,
+    comparable: row.documents >= MIN_SEASON_DOCUMENTS,
+  }));
+
+  return {
+    season,
+    from,
+    to,
+    rows: withFlag,
+    comparableClubs: withFlag.filter((row) => row.comparable).length,
+  };
+}
+
+/** Below this a club's season figure is a handful of headlines, not a mood. */
+const MIN_SEASON_DOCUMENTS = 100;
+
+/** Most frequent value; ties go to the larger, and an empty list to zero. */
+function modeOf(values: number[]): number {
+  const counts = new Map<number, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+
+  let best = 0;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount || (count === bestCount && value > best)) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best;
+}

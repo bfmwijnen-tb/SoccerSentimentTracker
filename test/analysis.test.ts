@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { extractPlayers } from '../src/sentiment/players.ts';
 import { detectClubs, CLUBS, CLUB_BY_FIXTURE_NAME } from '../src/clubs.ts';
 import { currentSeason } from '../src/collectors/fixtures.ts';
+import { seasonReview } from '../src/analysis/index.ts';
 import { stripHtml } from '../src/collectors/http.ts';
 
 /* ------------------------------------------------------------ player names */
@@ -133,4 +134,42 @@ test('strips entity-encoded markup, not just plain markup', () => {
 
 test('strips ordinary markup too', () => {
   assert.equal(stripHtml('<p>Een <b>sterke</b> tweede helft.</p>'), 'Een sterke tweede helft.');
+});
+
+/* --------------------------------------------------------- season in review */
+
+test('a season table counts the league programme, not the play-offs', () => {
+  // The fixture source carries the end-of-season European play-offs alongside
+  // the league programme. Counting them gave Ajax "36 games" in a 34-game
+  // league and three points it did not earn in the table, which moved it from
+  // fifth to third — a wrong final standing, not a rounding difference.
+  const review = seasonReview('2025-26');
+  if (review.rows.length === 0) return; // no fixtures collected in this checkout
+
+  const counts = new Set(review.rows.map((row) => row.played));
+  assert.equal(
+    counts.size,
+    1,
+    `every club plays the same league programme, got ${[...counts].sort().join('/')}`,
+  );
+
+  for (const row of review.rows) {
+    assert.ok(
+      row.points <= row.played * 3,
+      `${row.name}: ${row.points} points from ${row.played} games is impossible`,
+    );
+  }
+});
+
+test('a season is measured over its own months, not the last N days', () => {
+  const review = seasonReview('2025-26');
+  if (review.rows.length === 0) return;
+
+  // The whole point of the view: a window that ends today would land in the
+  // transfer season and describe a squad that has not played yet.
+  assert.ok(review.from < review.to, 'season window must run forwards');
+  assert.ok(
+    new Date(review.to).getTime() - new Date(review.from).getTime() > 180 * 864e5,
+    'a full season spans more than six months',
+  );
 });

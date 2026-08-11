@@ -27,6 +27,8 @@ import {
   players,
   transferHype,
   matchMarkers,
+  seasonReview,
+  seasons,
 } from '../analysis/index.ts';
 import { countMatches, coverage } from '../collectors/fixtures.ts';
 import { recentAlerts } from '../alerts.ts';
@@ -71,6 +73,7 @@ const routes: Record<string, (url: URL) => unknown> = {
     })),
     derbies: DERBIES,
     topics: TOPIC_LABELS,
+    seasons: seasons(),
     totalDocuments: countDocuments(),
     totalMatches: countMatches(),
     coverage: coverage(),
@@ -115,6 +118,10 @@ const routes: Record<string, (url: URL) => unknown> = {
   '/api/derbies': () => derbies(),
 
   '/api/records': () => extremeWeeks(5),
+
+  // Season-scoped, so it ignores the period filter entirely: a rolling window
+  // that ends today cannot answer "how did last season feel".
+  '/api/season': (url) => seasonReview(url.searchParams.get('season') ?? undefined),
 
   '/api/players': (url) => {
     const filters = parseFilters(url);

@@ -1090,3 +1090,15 @@ td .clubcell .dot {
     align-items: flex-start;
   }
 }
+
+/* Season rows below the coverage floor. Present, but visibly not part of the
+   comparison — dropping them would misrepresent the league, and printing them
+   at full weight would invite comparing forty headlines with eight hundred. */
+tr.thin td {
+  opacity: 0.55;
+}
+
+#season-caveat {
+  margin-top: 12px;
+  line-height: 1.6;
+}

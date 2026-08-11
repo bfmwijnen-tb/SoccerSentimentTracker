@@ -40,6 +40,7 @@
       <nav class="tabs" id="tabs" role="tablist" aria-label="Weergaven">
         <button class="tab" role="tab" data-view="overview" aria-selected="true">Overzicht</button>
         <button class="tab" role="tab" data-view="league" aria-selected="false">Competitie</button>
+        <button class="tab" role="tab" data-view="season" aria-selected="false">Seizoenen</button>
         <button class="tab" role="tab" data-view="pressure" aria-selected="false">Druk</button>
         <button class="tab" role="tab" data-view="players" aria-selected="false">Spelers</button>
         <button class="tab" role="tab" data-view="derbies" aria-selected="false">Derby's</button>
@@ -212,6 +213,46 @@
                 <tbody></tbody>
               </table>
             </div>
+          </section>
+        </div>
+
+        <!-- --------------------------------------------------------- season -->
+        <div class="view" data-view="season" hidden>
+          <section class="card" aria-labelledby="season-title">
+            <header class="card-head">
+              <div>
+                <h2 id="season-title">Een heel seizoen terugkijken</h2>
+                <p class="sub">
+                  De eindstand naast de stemming <b>over datzelfde seizoen</b> — niet over de
+                  laatste weken. Dat verschil is groot: een rollend venster van 30 of 90 dagen
+                  eindigt vandaag, midden in de transferzomer, waar élke club positief leest
+                  omdat er aanwinsten worden gepresenteerd. Hier loopt het venster van de eerste
+                  tot de laatste speelronde.
+                </p>
+              </div>
+              <div class="chart-controls">
+                <div class="control-group" id="season-picker">
+                  <span class="control-label">Seizoen</span>
+                </div>
+              </div>
+            </header>
+            <div id="season-summary"></div>
+            <div class="chart-wrap">
+              <table id="season-table">
+                <thead>
+                  <tr>
+                    <th class="num">#</th>
+                    <th>Club</th>
+                    <th class="num">G</th>
+                    <th class="num">Ptn</th>
+                    <th class="num">Stemming</th>
+                    <th class="num">Berichten</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p class="sub2" id="season-caveat"></p>
           </section>
         </div>
 

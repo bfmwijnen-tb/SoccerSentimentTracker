@@ -25,6 +25,8 @@ import {
   players,
   transferHype,
   matchMarkers,
+  seasonReview,
+  seasons,
 } from './analysis/index.ts';
 import { recentAlerts } from './alerts.ts';
 
@@ -82,6 +84,12 @@ function buildData(): Record<string, unknown> {
       data[key('/api/records')] = extremeWeeks(5);
       data[key('/api/alerts')] = recentAlerts(20);
     }
+  }
+
+  // Season reviews are keyed on the season rather than the period, because they
+  // deliberately ignore it — the whole point is a fixed window.
+  for (const season of seasons()) {
+    data[`/api/season|${season}`] = seasonReview(season);
   }
 
   return data;
@@ -143,6 +151,7 @@ export function exportStandalone(outputPath: string): { path: string; bytes: num
       featured,
     })),
     derbies: DERBIES,
+    seasons: seasons(),
     topics: TOPIC_LABELS,
     totalDocuments: countDocuments(),
     totalMatches: countMatches(),

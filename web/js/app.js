@@ -41,6 +41,8 @@ const state = {
   /** True once the reader picks a smoothing window themselves. */
   smoothingPinned: false,
   view: 'overview',
+  /** Fixed-window season for the Seizoenen view; set from meta once loaded. */
+  season: null,
   meta: null,
 };
 
@@ -627,6 +629,88 @@ function renderSourceTable(sources) {
     .join('');
 }
 
+/* --------------------------------------------------------- season review */
+
+/**
+ * Season data is fetched on its own key rather than through `api()`, because it
+ * is deliberately not filtered by the period control — a fixed season window is
+ * the entire point of the view.
+ */
+async function seasonApi(season) {
+  const snapshot = window.__STEMMING__;
+  if (snapshot) {
+    const payload = snapshot.data[`/api/season|${season}`];
+    if (payload === undefined) throw new Error(`Niet in de export: seizoen ${season}`);
+    return payload;
+  }
+  const response = await fetch(`/api/season?season=${encodeURIComponent(season)}`);
+  if (!response.ok) throw new Error(`/api/season → HTTP ${response.status}`);
+  return response.json();
+}
+
+function renderSeason(review) {
+  const day = (iso) =>
+    iso ? new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+  const comparable = review.rows.filter((r) => r.comparable);
+  const ranked = [...comparable].sort((a, b) => b.sentiment - a.sentiment);
+
+  // The plain-language reading, built from the clubs that can actually be
+  // compared: champion, and where the mood put them.
+  const champion = review.rows[0];
+  const moodLeader = ranked[0];
+  let summary = '';
+
+  if (champion && moodLeader) {
+    const championMood = comparable.find((r) => r.club === champion.club);
+    summary = championMood
+      ? championMood.club === moodLeader.club
+        ? `<b>${escapeHtml(champion.name)}</b> werd kampioen met ${champion.points} punten en werd
+           ook het positiefst besproken (${fmt(championMood.sentiment)}). Stand en stemming
+           wezen dat seizoen dezelfde kant op.`
+        : `<b>${escapeHtml(champion.name)}</b> werd kampioen met ${champion.points} punten en stond
+           op ${fmt(championMood.sentiment)}; het positiefst besproken was
+           <b>${escapeHtml(moodLeader.name)}</b> (${fmt(moodLeader.sentiment)}).`
+      : `<b>${escapeHtml(champion.name)}</b> werd kampioen met ${champion.points} punten.`;
+  }
+
+  $('#season-summary').innerHTML = summary
+    ? `<div class="note">${summary}
+         <p style="margin:10px 0 0">
+           Venster: ${day(review.from)} t/m ${day(review.to)}.
+         </p>
+       </div>`
+    : '';
+
+  $('#season-table tbody').innerHTML = review.rows
+    .map(
+      (row) => `
+        <tr class="${state.clubs.has(row.club) ? 'highlight' : ''}${row.comparable ? '' : ' thin'}">
+          <td class="num">${row.position}</td>
+          <td><span class="clubcell"><span class="dot" style="background:${colorFor(row.club)}"></span>${escapeHtml(row.name)}</span></td>
+          <td class="num">${row.played}</td>
+          <td class="num"><b>${row.points}</b></td>
+          <td class="num">${
+            row.documents
+              ? `<span style="color:${polarityColor(row.sentiment)}">${fmt(row.sentiment)}</span>`
+              : '<span style="color:var(--text-muted)">—</span>'
+          }</td>
+          <td class="num" style="color:var(--text-muted)">${row.documents}</td>
+        </tr>`,
+    )
+    .join('');
+
+  const thin = review.rows.length - comparable.length;
+  $('#season-caveat').innerHTML = `
+    Alleen de ${review.comparableClubs} clubs met minstens 100 berichten zijn onderling
+    vergelijkbaar; de ${thin} lichter gedrukte regels staan er voor de volledigheid.
+    <b>Een stemmingscijfer uit veertig koppen meet iets anders dan een uit achthonderd</b> —
+    de kleine clubs schommelen daardoor hard, niet omdat er meer over ze gevoeld wordt.
+    Over de hele competitie is er dan ook <b>geen betrouwbaar verband</b> tussen punten en
+    stemming: afhankelijk van waar je de grens legt loopt dat van −0,55 tot +0,72. Binnen de
+    goed gedekte clubs is de vergelijking wél zinnig.`;
+}
+
 /* ----------------------------------------------------------- league table */
 
 function renderLeagueTable(rows) {
@@ -954,6 +1038,8 @@ const LOADERS = {
 
   league: async () => renderLeagueTable(await api('/api/table')),
 
+  season: async () => renderSeason(await seasonApi(state.season)),
+
   pressure: async () => {
     const [pressure, react, predict] = await Promise.all([
       api('/api/pressure'),
@@ -1078,6 +1164,28 @@ function wireControls() {
       refresh();
     });
     host.appendChild(button);
+  }
+
+  // Season picker. Newest first, and the most recent *completed* season is the
+  // default — asking "how was last season" is the reason this view exists, and
+  // the season in progress has only a handful of matchdays to say it with.
+  const seasonList = state.meta.seasons ?? [];
+  state.season = seasonList[1] ?? seasonList[0] ?? null;
+
+  const seasonHost = $('#season-picker');
+  for (const season of seasonList) {
+    const button = document.createElement('button');
+    button.className = 'chip sm';
+    button.textContent = season.replace('-', '/');
+    button.setAttribute('aria-pressed', String(season === state.season));
+    button.addEventListener('click', () => {
+      state.season = season;
+      for (const other of seasonHost.querySelectorAll('button')) {
+        other.setAttribute('aria-pressed', String(other === button));
+      }
+      refresh();
+    });
+    seasonHost.appendChild(button);
   }
 
   const stored = localStorage.getItem('theme');
