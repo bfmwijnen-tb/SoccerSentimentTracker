@@ -30,6 +30,7 @@ import {
 } from '../analysis/index.ts';
 import { countMatches, coverage } from '../collectors/fixtures.ts';
 import { recentAlerts } from '../alerts.ts';
+import { refresh, isRefreshing, lastRefresh } from './refresh.ts';
 import type { ClubId } from '../types.ts';
 
 const webRoot = resolve(fileURLToPath(new URL('../../web', import.meta.url)));
@@ -128,10 +129,38 @@ const routes: Record<string, (url: URL) => unknown> = {
   },
 
   '/api/alerts': () => recentAlerts(20),
+
+  // Reports whether a refresh is running and what the last one did, so the
+  // dashboard can restore its button state after a reload mid-collection.
+  '/api/refresh-status': () => ({ running: isRefreshing(), last: lastRefresh() }),
+};
+
+/** Routes that change server state, and so must not be reachable by GET. */
+const mutations: Record<string, (url: URL) => Promise<unknown>> = {
+  '/api/refresh': (url) => refresh(Math.min(Number(url.searchParams.get('days') ?? 7), 90)),
 };
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+
+  const mutation = mutations[url.pathname];
+  if (mutation) {
+    if (request.method !== 'POST') {
+      response.writeHead(405, { Allow: 'POST', 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: 'Use POST' }));
+      return;
+    }
+    try {
+      const payload = await mutation(url);
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      response.end(JSON.stringify(payload));
+    } catch (error) {
+      console.error('Refresh failed:', error);
+      response.writeHead(500, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ error: (error as Error).message }));
+    }
+    return;
+  }
 
   const handler = routes[url.pathname];
   if (handler) {

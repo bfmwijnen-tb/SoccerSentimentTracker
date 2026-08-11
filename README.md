@@ -54,8 +54,9 @@ npm start         # then open http://localhost:8787
 
 That's it. `npm run setup` is safe to re-run at any time.
 
-**Keep it up to date** — RSS feeds only carry a day or two, so history builds forward from
-your first run. One cron line keeps it fed:
+**Keep it up to date** — there is a **Data verversen** button in the dashboard header that
+collects on demand, so you never need a terminal once it is running. RSS feeds only carry a
+day or two, so history builds forward from your first run; for unattended updates, cron:
 
 ```cron
 */30 * * * * cd /path/to/SoccerSentimentTracker && npm run collect >> collect.log 2>&1

@@ -18,8 +18,12 @@ export interface Club {
   strictAliases?: string[];
   subreddits: string[];
   youtubeChannels: string[];
-  /** Name used by the openfootball dataset, for joining fixtures to clubs. */
-  fixtureName: string;
+  /**
+   * Every name the fixture sources use for this club. ESPN and openfootball
+   * disagree constantly ("AFC Ajax" vs "Ajax Amsterdam", "Telstar 1963" vs
+   * "Telstar"), so both spellings live here and either one resolves.
+   */
+  fixtureNames: string[];
 }
 
 /**
@@ -39,7 +43,7 @@ export const CLUBS: Club[] = [
     aliases: ['ajax', 'afc ajax', 'de godenzonen', 'amsterdammers', 'ajacieden', 'ajacied'],
     subreddits: ['Ajax'],
     youtubeChannels: ['UCiIlU9ijJhBGkPvHzIfW-cA'],
-    fixtureName: 'AFC Ajax',
+    fixtureNames: ['AFC Ajax', 'Ajax Amsterdam', 'Ajax'],
   },
   {
     id: 'psv',
@@ -52,7 +56,7 @@ export const CLUBS: Club[] = [
     strictAliases: ['PSV'],
     subreddits: ['PSV'],
     youtubeChannels: ['UCg6D7-CjkYuFDGpTIrxQXEA'],
-    fixtureName: 'PSV',
+    fixtureNames: ['PSV', 'PSV Eindhoven'],
   },
   {
     id: 'feyenoord',
@@ -64,7 +68,7 @@ export const CLUBS: Club[] = [
     aliases: ['feyenoord', 'feijenoord', 'de stadionclub', 'de kuip'],
     subreddits: ['Feyenoord'],
     youtubeChannels: ['UCf6b6bAn8QRHNiZ0zbYq0hg'],
-    fixtureName: 'Feyenoord Rotterdam',
+    fixtureNames: ['Feyenoord Rotterdam', 'Feyenoord'],
   },
   {
     id: 'az',
@@ -77,7 +81,7 @@ export const CLUBS: Club[] = [
     strictAliases: ['AZ'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'AZ',
+    fixtureNames: ['AZ', 'AZ Alkmaar'],
   },
   {
     id: 'twente',
@@ -89,7 +93,7 @@ export const CLUBS: Club[] = [
     aliases: ['fc twente', 'twente', 'tukkers'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: "FC Twente '65",
+    fixtureNames: ["FC Twente '65", 'FC Twente', 'Twente'],
   },
   {
     id: 'utrecht',
@@ -101,7 +105,7 @@ export const CLUBS: Club[] = [
     aliases: ['fc utrecht', 'domstedelingen'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'FC Utrecht',
+    fixtureNames: ['FC Utrecht', 'Utrecht'],
   },
   {
     id: 'groningen',
@@ -113,7 +117,7 @@ export const CLUBS: Club[] = [
     aliases: ['fc groningen', 'trots van het noorden'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'FC Groningen',
+    fixtureNames: ['FC Groningen', 'Groningen'],
   },
   {
     id: 'heerenveen',
@@ -125,7 +129,7 @@ export const CLUBS: Club[] = [
     aliases: ['sc heerenveen', 'heerenveen'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'SC Heerenveen',
+    fixtureNames: ['SC Heerenveen', 'Heerenveen'],
   },
   {
     id: 'nec',
@@ -138,7 +142,7 @@ export const CLUBS: Club[] = [
     strictAliases: ['NEC'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'NEC',
+    fixtureNames: ['NEC', 'NEC Nijmegen'],
   },
   {
     id: 'goahead',
@@ -150,7 +154,7 @@ export const CLUBS: Club[] = [
     aliases: ['go ahead eagles', 'go ahead'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'Go Ahead Eagles',
+    fixtureNames: ['Go Ahead Eagles'],
   },
   {
     id: 'sparta',
@@ -162,7 +166,7 @@ export const CLUBS: Club[] = [
     aliases: ['sparta rotterdam', 'kasteelheren'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'Sparta Rotterdam',
+    fixtureNames: ['Sparta Rotterdam'],
   },
   {
     id: 'fortuna',
@@ -174,7 +178,7 @@ export const CLUBS: Club[] = [
     aliases: ['fortuna sittard'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'Fortuna Sittard',
+    fixtureNames: ['Fortuna Sittard'],
   },
   {
     id: 'heracles',
@@ -186,7 +190,7 @@ export const CLUBS: Club[] = [
     aliases: ['heracles almelo', 'heracles'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'Heracles Almelo',
+    fixtureNames: ['Heracles Almelo', 'Heracles'],
   },
   {
     id: 'nac',
@@ -199,7 +203,7 @@ export const CLUBS: Club[] = [
     strictAliases: ['NAC'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'NAC Breda',
+    fixtureNames: ['NAC Breda', 'NAC'],
   },
   {
     id: 'pec',
@@ -212,7 +216,7 @@ export const CLUBS: Club[] = [
     strictAliases: ['PEC'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'PEC Zwolle',
+    fixtureNames: ['PEC Zwolle'],
   },
   {
     id: 'volendam',
@@ -224,7 +228,7 @@ export const CLUBS: Club[] = [
     aliases: ['fc volendam', 'volendam'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'FC Volendam',
+    fixtureNames: ['FC Volendam', 'Volendam'],
   },
   {
     id: 'excelsior',
@@ -236,7 +240,7 @@ export const CLUBS: Club[] = [
     aliases: ['sbv excelsior', 'excelsior'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'SBV Excelsior',
+    fixtureNames: ['SBV Excelsior', 'Excelsior'],
   },
   {
     id: 'telstar',
@@ -248,14 +252,52 @@ export const CLUBS: Club[] = [
     aliases: ['telstar'],
     subreddits: [],
     youtubeChannels: [],
-    fixtureName: 'Telstar 1963',
+    fixtureNames: ['Telstar 1963', 'Telstar'],
+  },
+  {
+    id: 'ado',
+    name: 'ADO Den Haag',
+    shortName: 'ADO',
+    city: 'Den Haag',
+    featured: false,
+    brand: { primary: '#009036', secondary: '#f9e300' },
+    aliases: ['ado den haag', 'ado'],
+    subreddits: [],
+    youtubeChannels: [],
+    fixtureNames: ['ADO Den Haag', 'ADO'],
+  },
+  {
+    id: 'cambuur',
+    name: 'SC Cambuur',
+    shortName: 'Cambuur',
+    city: 'Leeuwarden',
+    featured: false,
+    brand: { primary: '#f9e300', secondary: '#005ca9' },
+    aliases: ['sc cambuur', 'cambuur'],
+    subreddits: [],
+    youtubeChannels: [],
+    fixtureNames: ['SC Cambuur', 'Cambuur'],
+  },
+  {
+    id: 'willem2',
+    name: 'Willem II',
+    shortName: 'Willem II',
+    city: 'Tilburg',
+    featured: false,
+    brand: { primary: '#e2001a', secondary: '#005ca9' },
+    aliases: ['willem ii', 'willem 2', 'tricolores'],
+    subreddits: [],
+    youtubeChannels: [],
+    fixtureNames: ['Willem II'],
   },
 ];
 
 export const CLUB_IDS = CLUBS.map((c) => c.id);
 export const CLUB_BY_ID = new Map<ClubId, Club>(CLUBS.map((c) => [c.id, c]));
 export const FEATURED_CLUBS = CLUBS.filter((c) => c.featured);
-export const CLUB_BY_FIXTURE_NAME = new Map(CLUBS.map((c) => [c.fixtureName, c.id]));
+export const CLUB_BY_FIXTURE_NAME = new Map(
+  CLUBS.flatMap((c) => c.fixtureNames.map((name) => [name, c.id] as const)),
+);
 
 export const NEUTRAL_SUBREDDITS = ['Eredivisie', 'FootballNL'];
 

@@ -52,14 +52,19 @@ test('rejects a lone capitalised word', () => {
 
 /* ------------------------------------------------------------------- clubs */
 
-test('every club maps to a fixture-dataset name', () => {
-  assert.equal(CLUBS.length, 18, 'the Eredivisie has 18 clubs');
+test('every club maps back from every fixture-source spelling', () => {
+  // 21 rather than 18: the three clubs relegated after 2025-26 stay in the list
+  // so their history, derbies and press mentions still resolve.
+  assert.equal(CLUBS.length, 21);
   for (const club of CLUBS) {
-    assert.equal(
-      CLUB_BY_FIXTURE_NAME.get(club.fixtureName),
-      club.id,
-      `${club.id} must round-trip through its fixture name`,
-    );
+    assert.ok(club.fixtureNames.length > 0, `${club.id} needs a fixture name`);
+    for (const name of club.fixtureNames) {
+      assert.equal(
+        CLUB_BY_FIXTURE_NAME.get(name),
+        club.id,
+        `"${name}" must resolve to ${club.id}`,
+      );
+    }
   }
 });
 

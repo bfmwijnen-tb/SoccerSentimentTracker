@@ -888,3 +888,65 @@ td .clubcell .dot {
   border-radius: 50%;
   flex: none;
 }
+
+/* ------------------------------------------------------------- refresh --- */
+
+.masthead-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+#refresh-btn[data-busy='true'] {
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+#refresh-btn[data-busy='true'] .spin {
+  display: inline-block;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.toast {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 80;
+  max-width: 380px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--pos);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.18s, transform 0.18s;
+}
+
+.toast[data-visible='true'] {
+  opacity: 1;
+  transform: none;
+}
+
+.toast.error {
+  border-left-color: var(--neg);
+}
+
+.toast b {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.toast .detail {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}

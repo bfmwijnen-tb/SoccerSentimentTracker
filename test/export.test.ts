@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, rmSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { exportStandalone } from '../src/export.ts';
 
@@ -13,6 +14,8 @@ import { exportStandalone } from '../src/export.ts';
  * modules) were compile-time SyntaxErrors that produced a blank page. Compiling
  * the emitted script is therefore the test that matters most.
  */
+
+const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../web');
 
 function buildOnce(): string {
   const dir = mkdtempSync(join(tmpdir(), 'stemming-export-'));
@@ -69,7 +72,9 @@ test('embeds a parseable snapshot with every view represented', () => {
 
   const snapshot = JSON.parse(payload[1]!);
   assert.ok(snapshot.generatedAt, 'snapshot must record when it was taken');
-  assert.equal(snapshot.meta.clubs.length, 18);
+  // 21: the 18 currently in the Eredivisie plus the three relegated after
+  // 2025-26, which stay so their history and press mentions still resolve.
+  assert.equal(snapshot.meta.clubs.length, 21);
 
   for (const path of [
     '/api/overview',
@@ -81,6 +86,30 @@ test('embeds a parseable snapshot with every view represented', () => {
     '/api/records',
   ]) {
     assert.ok(snapshot.data[`${path}|30|`], `snapshot missing ${path} for the default view`);
+  }
+});
+
+test('every chip group is wired to an attribute that exists in the markup', () => {
+  // The smoothing chips carry `data-smooth` while the state field is
+  // `smoothing`. Deriving the dataset key from the state key read
+  // `dataset.smoothing`, got undefined, and set the state to NaN — the buttons
+  // highlighted correctly and changed nothing, which is invisible to a
+  // compile check and to any test that only looks at markup.
+  const app = readFileSync(resolve(webRoot, 'js/app.js'), 'utf8');
+  const markup = readFileSync(resolve(webRoot, 'index.html'), 'utf8');
+
+  const calls = [...app.matchAll(/toggleGroup\(\s*'\[data-([\w-]+)\]'\s*,\s*'(\w+)'\s*,\s*'(\w+)'/g)];
+  assert.ok(calls.length >= 3, `expected the chip groups to be wired, found ${calls.length}`);
+
+  for (const [, attribute, , datasetKey] of calls) {
+    // data-foo-bar reaches JS as dataset.fooBar.
+    const expected = attribute!.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
+    assert.equal(
+      datasetKey,
+      expected,
+      `toggleGroup('[data-${attribute}]', …) must read dataset.${expected}, not dataset.${datasetKey}`,
+    );
+    assert.ok(markup.includes(`data-${attribute}=`), `no data-${attribute} in index.html`);
   }
 });
 

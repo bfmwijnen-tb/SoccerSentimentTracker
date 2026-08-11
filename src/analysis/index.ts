@@ -1,6 +1,6 @@
 import { db } from '../db/index.ts';
 import { CLUBS, CLUB_BY_ID, DERBIES } from '../clubs.ts';
-import { matchesForClub, type ClubMatch } from '../collectors/fixtures.ts';
+import { matchesForClub, currentSeason, type ClubMatch } from '../collectors/fixtures.ts';
 import type { ClubId } from '../types.ts';
 
 /** Same weighting as the main query layer: confidence x log-damped engagement. */
@@ -52,11 +52,15 @@ export interface TableRow {
  * The interesting reading is the mismatch: a club sitting fourth whose fanbase
  * is at -0.4 is in a different situation from one sitting fourth at +0.3.
  */
-export function leagueTable(days = 30): TableRow[] {
+export function leagueTable(days = 30, season = currentSeason()): TableRow[] {
   const rows: TableRow[] = [];
 
   for (const club of CLUBS) {
-    const matches = matchesForClub(club.id).filter((m) => m.outcome !== null);
+    const fixtures = matchesForClub(club.id, { season });
+    // Promotion and relegation are handled by the data rather than a hardcoded
+    // list: a club with no fixtures this season simply is not in this league.
+    if (fixtures.length === 0) continue;
+    const matches = fixtures.filter((m) => m.outcome !== null);
     const mood = sentimentBetween(
       club.id,
       new Date(Date.now() - days * 864e5).toISOString(),
@@ -122,8 +126,10 @@ export interface PressureRow {
 export function pressureIndex(days = 30): PressureRow[] {
   const now = Date.now();
   const conn = db();
+  const season = currentSeason();
+  const inLeague = CLUBS.filter((club) => matchesForClub(club.id, { season }).length > 0);
 
-  return CLUBS.map((club) => {
+  return (inLeague.length > 0 ? inLeague : CLUBS).map((club) => {
     const coach = conn
       .prepare(
         `SELECT SUM(s.score * ${WEIGHT}) / NULLIF(SUM(${WEIGHT}), 0) AS score,
@@ -148,7 +154,11 @@ export function pressureIndex(days = 30): PressureRow[] {
       new Date(now - days * 864e5).toISOString(),
     );
 
-    const played = matchesForClub(club.id).filter((m) => m.outcome !== null);
+    // Form is read from the current season only — reaching back across a summer
+    // break would describe a squad that no longer exists.
+    const played = matchesForClub(club.id, { season: currentSeason() }).filter(
+      (m) => m.outcome !== null,
+    );
     const recent = played.slice(-5);
     const points = recent.reduce(
       (sum, m) => sum + (m.outcome === 'win' ? 3 : m.outcome === 'draw' ? 1 : 0),

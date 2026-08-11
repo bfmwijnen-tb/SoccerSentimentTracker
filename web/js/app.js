@@ -723,10 +723,20 @@ function setView(view) {
   refresh();
 }
 
-function toggleGroup(selector, key, cast = String) {
+/**
+ * Wires a row of chips to a piece of state.
+ *
+ * `datasetKey` is passed explicitly rather than derived from the state key:
+ * the smoothing chips carry `data-smooth` while the state field is `smoothing`,
+ * so deriving it read `dataset.smoothing`, got undefined, and set the state to
+ * NaN — the buttons highlighted correctly and changed nothing.
+ */
+function toggleGroup(selector, stateKey, datasetKey, cast = String) {
   for (const button of $$(selector)) {
     button.addEventListener('click', () => {
-      state[key] = cast(button.dataset[key === 'sources' ? 'source' : key]);
+      const raw = button.dataset[datasetKey];
+      if (raw === undefined) return;
+      state[stateKey] = cast(raw);
       for (const other of $$(selector)) {
         other.setAttribute('aria-pressed', String(other === button));
       }
@@ -736,9 +746,9 @@ function toggleGroup(selector, key, cast = String) {
 }
 
 function wireControls() {
-  toggleGroup('[data-days]', 'days', Number);
-  toggleGroup('[data-source]', 'sources');
-  toggleGroup('[data-smooth]', 'smoothing', Number);
+  toggleGroup('[data-days]', 'days', 'days', Number);
+  toggleGroup('[data-source]', 'sources', 'source');
+  toggleGroup('[data-smooth]', 'smoothing', 'smooth', Number);
 
   for (const tab of $$('.tab')) tab.addEventListener('click', () => setView(tab.dataset.view));
 
@@ -782,6 +792,67 @@ function wireControls() {
   });
 }
 
+/* ---------------------------------------------------------------- refresh */
+
+function toast(title, detail, isError = false) {
+  let node = $('.toast');
+  if (!node) {
+    node = document.createElement('div');
+    node.className = 'toast';
+    node.setAttribute('role', 'status');
+    document.body.appendChild(node);
+  }
+  node.className = `toast${isError ? ' error' : ''}`;
+  node.innerHTML = `<b>${escapeHtml(title)}</b><span class="detail">${escapeHtml(detail)}</span>`;
+  node.dataset.visible = 'true';
+  clearTimeout(node._timer);
+  node._timer = setTimeout(() => {
+    node.dataset.visible = 'false';
+  }, 7000);
+}
+
+/**
+ * Runs a collection from the dashboard.
+ *
+ * The request is deliberately long-lived — collecting takes tens of seconds and
+ * the server answers only when it is done — so the button reports progress
+ * rather than appearing frozen. The server itself is single-flight, so a second
+ * click while one is running joins the existing run instead of starting a
+ * competing crawl.
+ */
+async function runRefresh() {
+  const button = $('#refresh-btn');
+  const label = $('#refresh-label');
+  if (!button || button.dataset.busy === 'true') return;
+
+  button.dataset.busy = 'true';
+  label.textContent = 'Bezig met ophalen…';
+
+  try {
+    const response = await fetch('/api/refresh?days=7', { method: 'POST' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+
+    const seconds = Math.round(result.durationMs / 1000);
+    const failed = result.sources.filter((s) => s.error);
+
+    toast(
+      result.newDocuments > 0
+        ? `${result.newDocuments} nieuwe berichten`
+        : 'Alles was al up-to-date',
+      `${result.documentsAfter} berichten en ${result.matches} wedstrijden in ${seconds}s.` +
+        (failed.length ? ` ${failed.length} bron(nen) mislukt.` : ''),
+    );
+
+    await refresh();
+  } catch (error) {
+    toast('Verversen mislukt', error.message, true);
+  } finally {
+    button.dataset.busy = 'false';
+    label.textContent = 'Data verversen';
+  }
+}
+
 /** Marks an exported page as a snapshot, with the moment it was taken. */
 function renderExportBanner(snapshot) {
   const taken = new Date(snapshot.generatedAt).toLocaleString('nl-NL', {
@@ -800,7 +871,28 @@ function renderExportBanner(snapshot) {
 async function boot() {
   const snapshot = window.__STEMMING__;
   state.meta = snapshot ? snapshot.meta : await (await fetch('/api/meta')).json();
-  if (snapshot) renderExportBanner(snapshot);
+
+  if (snapshot) {
+    // A static export has no server to collect with, so the button would be a
+    // dead control — it stays hidden there rather than failing on click.
+    renderExportBanner(snapshot);
+  } else {
+    const button = $('#refresh-btn');
+    button.hidden = false;
+    button.addEventListener('click', runRefresh);
+
+    // A collection started before a reload is still running server-side; pick
+    // the button state back up rather than offering to start a second one.
+    fetch('/api/refresh-status')
+      .then((r) => r.json())
+      .then((status) => {
+        if (!status.running) return;
+        button.dataset.busy = 'true';
+        $('#refresh-label').textContent = 'Bezig met ophalen…';
+      })
+      .catch(() => {});
+  }
+
   renderCollectors();
   wireControls();
   await refresh();

@@ -45,7 +45,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = resolve(here, '../web');
 
 /** Club filtering happens in the browser, so snapshots vary only on these. */
-const PERIODS = [7, 30, 90, 365];
+const PERIODS = [7, 30, 90, 180, 365];
 const SOURCES = ['', 'news', 'reddit,youtube,bluesky'];
 
 /** Documents dominate the file size, so the export carries fewer than the API. */

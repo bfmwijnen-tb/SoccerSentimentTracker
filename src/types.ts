@@ -16,7 +16,10 @@ export type ClubId =
   | 'pec'
   | 'volendam'
   | 'excelsior'
-  | 'telstar';
+  | 'telstar'
+  | 'ado'
+  | 'cambuur'
+  | 'willem2';
 
 export type MatchOutcome = 'win' | 'draw' | 'loss';
 

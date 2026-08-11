@@ -26,9 +26,15 @@
             afgezet tegen uitslagen.
           </p>
         </div>
-        <button class="chip" id="theme-toggle" aria-label="Wissel donker/licht thema">
-          <span aria-hidden="true">◐</span> Thema
-        </button>
+        <div class="masthead-actions">
+          <button class="chip" id="refresh-btn" hidden>
+            <span class="spin" aria-hidden="true">↻</span>
+            <span id="refresh-label">Data verversen</span>
+          </button>
+          <button class="chip" id="theme-toggle" aria-label="Wissel donker/licht thema">
+            <span aria-hidden="true">◐</span> Thema
+          </button>
+        </div>
       </header>
 
       <nav class="tabs" id="tabs" role="tablist" aria-label="Weergaven">
@@ -45,7 +51,8 @@
           <span class="control-label">Periode</span>
           <button class="chip" data-days="7">7d</button>
           <button class="chip" data-days="30" aria-pressed="true">30d</button>
-          <button class="chip" data-days="90">90d</button>
+          <button class="chip" data-days="90">3 mnd</button>
+          <button class="chip" data-days="180">6 mnd</button>
           <button class="chip" data-days="365">Seizoen</button>
         </div>
         <div class="control-group" id="club-filters">

@@ -11,7 +11,16 @@ import type { ClubId } from '../types.ts';
  * roughly nine times out of ten. It is a plain JSON file on a CDN — no API key,
  * no rate limit, no terms to accept.
  */
-const SOURCE = 'https://raw.githubusercontent.com/openfootball/football.json/master';
+const OPENFOOTBALL = 'https://raw.githubusercontent.com/openfootball/football.json/master';
+
+/**
+ * ESPN's public scoreboard. This is the primary source, because openfootball
+ * publishes a season only once it is well underway — during August it still had
+ * nothing for 2026-27, which left the league table, the pressure barometer and
+ * every form figure showing last season months after it ended. ESPN carries the
+ * full fixture list from the day it is announced, results included.
+ */
+const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/soccer/ned.1/scoreboard';
 
 interface OpenFootballMatch {
   round?: string;
@@ -29,6 +38,85 @@ export function currentSeason(now = new Date()): string {
   return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
 }
 
+interface EspnEvent {
+  date: string;
+  competitions?: Array<{
+    status?: { type?: { completed?: boolean } };
+    competitors?: Array<{
+      homeAway?: string;
+      score?: string;
+      team?: { displayName?: string; shortDisplayName?: string };
+    }>;
+  }>;
+}
+
+/** Season bounds: Eredivisie runs August to late May. */
+function seasonWindow(season: string): { from: string; to: string } {
+  const start = Number(season.slice(0, 4));
+  return { from: `${start}0701`, to: `${start + 1}0630` };
+}
+
+/**
+ * Pulls one season from ESPN. Returns the number of matches stored, or null if
+ * the source could not be used at all, so the caller can fall back.
+ */
+async function collectFromEspn(season: string): Promise<number | null> {
+  const { from, to } = seasonWindow(season);
+
+  try {
+    const response = await politeFetch(`${ESPN}?dates=${from}-${to}&limit=1000`);
+    if (!response.ok) return null;
+
+    const payload = (await response.json()) as { events?: EspnEvent[] };
+    const events = payload.events ?? [];
+    if (events.length === 0) return null;
+
+    const conn = db();
+    const insert = conn.prepare(
+      `INSERT OR REPLACE INTO matches
+         (season, round, played_at, home_club, away_club, home_name, away_name, home_goals, away_goals)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+
+    let stored = 0;
+
+    const run = conn.transaction(() => {
+      for (const event of events) {
+        const competition = event.competitions?.[0];
+        const competitors = competition?.competitors ?? [];
+        const home = competitors.find((c) => c.homeAway === 'home');
+        const away = competitors.find((c) => c.homeAway === 'away');
+        if (!home?.team?.displayName || !away?.team?.displayName) continue;
+
+        // A fixture that has not been played yet still belongs in the table —
+        // it just carries no score, which keeps upcoming matches available for
+        // the timeline without inventing a result.
+        const played = competition?.status?.type?.completed === true;
+        const homeGoals = played ? Number(home.score ?? NaN) : NaN;
+        const awayGoals = played ? Number(away.score ?? NaN) : NaN;
+
+        insert.run(
+          season,
+          null,
+          new Date(event.date).toISOString(),
+          CLUB_BY_FIXTURE_NAME.get(home.team.displayName) ?? null,
+          CLUB_BY_FIXTURE_NAME.get(away.team.displayName) ?? null,
+          home.team.displayName,
+          away.team.displayName,
+          Number.isFinite(homeGoals) ? homeGoals : null,
+          Number.isFinite(awayGoals) ? awayGoals : null,
+        );
+        stored += 1;
+      }
+    });
+
+    run();
+    return stored;
+  } catch {
+    return null;
+  }
+}
+
 export async function collectFixtures(seasons?: string[]): Promise<number> {
   // Default to this season plus last: the previous season provides the history
   // the reactivity and predictive views need before the new one has any data.
@@ -44,8 +132,15 @@ export async function collectFixtures(seasons?: string[]): Promise<number> {
   let stored = 0;
 
   for (const season of targets) {
+    const viaEspn = await collectFromEspn(season);
+    if (viaEspn !== null && viaEspn > 0) {
+      stored += viaEspn;
+      console.log(`  ✓ ${season}: ${viaEspn} matches (ESPN)`);
+      continue;
+    }
+
     try {
-      const response = await politeFetch(`${SOURCE}/${season}/nl.1.json`);
+      const response = await politeFetch(`${OPENFOOTBALL}/${season}/nl.1.json`);
       if (!response.ok) {
         // A season that has not been published yet is expected, not an error.
         console.log(`  · ${season}: not published yet (HTTP ${response.status})`);
@@ -77,7 +172,7 @@ export async function collectFixtures(seasons?: string[]): Promise<number> {
 
       run(matches);
       stored += matches.length;
-      console.log(`  ✓ ${season}: ${matches.length} matches`);
+      console.log(`  ✓ ${season}: ${matches.length} matches (openfootball)`);
     } catch (error) {
       console.warn(`  ✗ ${season}: ${(error as Error).message}`);
     }
@@ -103,10 +198,28 @@ export interface ClubMatch {
   round: string | null;
 }
 
-/** Every match for a club, oldest first, normalised to that club's viewpoint. */
-export function matchesForClub(club: ClubId, sinceDays?: number): ClubMatch[] {
+/**
+ * Every match for a club, oldest first, normalised to that club's viewpoint.
+ *
+ * The season filter matters now that more than one season is stored: without it
+ * a league table sums two seasons together and a club's "last five" can reach
+ * back across a summer.
+ */
+export function matchesForClub(
+  club: ClubId,
+  options: { sinceDays?: number; season?: string } = {},
+): ClubMatch[] {
   const conn = db();
-  const clause = sinceDays ? `AND played_at >= datetime('now', '-${sinceDays} days')` : '';
+  const clauses: string[] = [];
+  const params: unknown[] = [club, club];
+
+  if (options.sinceDays) {
+    clauses.push(`AND played_at >= datetime('now', '-${Number(options.sinceDays)} days')`);
+  }
+  if (options.season) {
+    clauses.push('AND season = ?');
+    params.push(options.season);
+  }
 
   const rows = conn
     .prepare(
@@ -115,10 +228,10 @@ export function matchesForClub(club: ClubId, sinceDays?: number): ClubMatch[] {
               home_name AS homeName, away_name AS awayName,
               home_goals AS homeGoals, away_goals AS awayGoals
          FROM matches
-        WHERE (home_club = ? OR away_club = ?) ${clause}
+        WHERE (home_club = ? OR away_club = ?) ${clauses.join(' ')}
         ORDER BY played_at ASC`,
     )
-    .all(club, club) as Array<{
+    .all(...params) as Array<{
     id: number;
     playedAt: string;
     round: string | null;
