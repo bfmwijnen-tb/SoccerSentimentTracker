@@ -10,6 +10,7 @@ import { CLUB_BY_ID } from './clubs.ts';
 import { collectFixtures, countMatches } from './collectors/fixtures.ts';
 import { checkAlerts } from './alerts.ts';
 import { pressureIndex, leagueTable } from './analysis/index.ts';
+import { exportStandalone } from './export.ts';
 
 const [command = 'help', ...args] = process.argv.slice(2);
 
@@ -169,6 +170,17 @@ switch (command) {
     break;
   }
 
+  case 'export': {
+    const index = args.indexOf('--out');
+    const target = index === -1 ? './dist/stemming.html' : (args[index + 1] ?? './dist/stemming.html');
+    console.log('Building standalone dashboard…');
+    const result = exportStandalone(target);
+    const mb = (result.bytes / 1024 / 1024).toFixed(1);
+    console.log(`\n✓ ${result.path} (${mb} MB)`);
+    console.log('  Open it directly in a browser — no server needed.\n');
+    break;
+  }
+
   case 'setup':
   case 'seed': {
     // One command to a working dashboard: fixtures first (they anchor every
@@ -202,6 +214,7 @@ switch (command) {
     npm run table    [--days 30]    League table with a sentiment column
     npm run pressure [--days 30]    Manager pressure index
     npm run alerts   [--dry-run]    Check sentiment alerts, fire webhooks
+    npm run export   [--out FILE]   Build a standalone single-file dashboard
     npm start                       Serve the dashboard
 `);
 }

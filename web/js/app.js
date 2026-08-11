@@ -31,7 +31,26 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
+/**
+ * Fetches an API payload, or reads it from the embedded snapshot.
+ *
+ * `npm run export` bakes every (period x source) combination into a single
+ * self-contained HTML file that runs from file:// with no server. When that
+ * snapshot is present the same render code reads from it instead, so the export
+ * and the live dashboard never drift apart. Club filtering is done in the
+ * browser either way, which is why the snapshot only varies on period and
+ * source rather than on every possible club selection.
+ */
 async function api(path, params = {}) {
+  const snapshot = window.__STEMMING__;
+
+  if (snapshot) {
+    const key = `${path}|${state.days}|${state.sources}`;
+    const payload = snapshot.data[key] ?? snapshot.data[`${path}|${state.days}|`];
+    if (payload === undefined) throw new Error(`Niet in de export: ${path}`);
+    return payload;
+  }
+
   const query = new URLSearchParams({ days: String(state.days), ...params });
   if (state.sources) query.set('sources', state.sources);
   const response = await fetch(`${path}?${query}`);
@@ -763,8 +782,25 @@ function wireControls() {
   });
 }
 
+/** Marks an exported page as a snapshot, with the moment it was taken. */
+function renderExportBanner(snapshot) {
+  const taken = new Date(snapshot.generatedAt).toLocaleString('nl-NL', {
+    dateStyle: 'full',
+    timeStyle: 'short',
+  });
+  document.querySelector('.masthead').insertAdjacentHTML(
+    'afterend',
+    `<div class="note" style="margin-bottom:20px">
+       <b>Momentopname</b> — geëxporteerd op ${taken}. Deze pagina draait zonder server en
+       ververst zichzelf niet. Draai <code>npm run export</code> opnieuw voor actuele cijfers.
+     </div>`,
+  );
+}
+
 async function boot() {
-  state.meta = await (await fetch('/api/meta')).json();
+  const snapshot = window.__STEMMING__;
+  state.meta = snapshot ? snapshot.meta : await (await fetch('/api/meta')).json();
+  if (snapshot) renderExportBanner(snapshot);
   renderCollectors();
   wireControls();
   await refresh();

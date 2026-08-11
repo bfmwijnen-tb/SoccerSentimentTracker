@@ -19,6 +19,7 @@
     "table": "tsx src/cli.ts table",
     "pressure": "tsx src/cli.ts pressure",
     "alerts": "tsx src/cli.ts alerts",
+    "export": "tsx src/cli.ts export",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts"
   },

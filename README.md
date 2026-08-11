@@ -36,11 +36,34 @@ your first run. One cron line keeps it fed:
 | `better-sqlite3` fails to build | `npm install` needs a C++ toolchain: `apt install build-essential` (Linux) or Xcode command line tools (macOS) |
 | Port 8787 already in use | `PORT=9000 npm start` |
 | Charts are empty | Run `npm run setup` first — the database starts empty |
+| Opening `web/index.html` directly shows nothing | That file needs the API. Use `npm run export` for a standalone version |
 | "Media versus fans" says no fan sources | Expected. See *Data sources* below |
 | Match-anchored views are empty | Expected until fixtures and collected documents cover the same dates. The dashboard shows you both ranges |
 
 Start over from scratch with `rm -rf data/ && npm run setup`.
 </details>
+
+### No server: a standalone HTML file
+
+If you'd rather not keep Node running — to share the dashboard, mail it, drop it on a static
+host, or just double-click it — export it as a single self-contained file:
+
+```bash
+npm run export        # writes dist/stemming.html (~1 MB)
+```
+
+Open that file directly in any browser. No server, no install, no network: the stylesheet,
+the scripts and the data are all inlined, and every period and source filter still works
+because each combination is precomputed at export time. Club filters and chart interactions
+work as normal.
+
+It is a **snapshot** — the page says so at the top, with the moment it was taken — so re-run
+`npm run export` whenever you want fresh numbers. Collection itself still needs Node, since
+that part has to fetch and score; only the viewing becomes portable.
+
+```bash
+npm run export -- --out ~/Desktop/stemming.html   # write it somewhere else
+```
 
 ### Commands
 
@@ -54,6 +77,7 @@ npm run stats    [--days 30]    Current standings in the terminal
 npm run table    [--days 30]    League table with a sentiment column
 npm run pressure [--days 30]    Manager pressure index
 npm run alerts   [--dry-run]    Check sentiment alerts, fire webhooks
+npm run export   [--out FILE]   Build a standalone single-file dashboard
 npm start                       Serve the dashboard on :8787
 npm test                        Run the test suite
 ```
