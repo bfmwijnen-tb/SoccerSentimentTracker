@@ -57,6 +57,15 @@ jobs:
       - run: npm ci
 
       - name: Collect fixtures and documents
+        # Fan sources are optional. Each one activates only when its secret is
+        # set under Settings -> Secrets and variables -> Actions; unset ones are
+        # skipped, and collection carries on with the news feeds.
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          BLUESKY_IDENTIFIER: ${{ secrets.BLUESKY_IDENTIFIER }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
         run: |
           npm run fixtures
           # On a cold cache the timeline would otherwise show only the day or

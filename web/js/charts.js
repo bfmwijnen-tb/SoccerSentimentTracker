@@ -234,6 +234,34 @@ export function lineChart(container, { series, colors, labels, markers = [], smo
     M.left + (days.length === 1 ? plotW / 2 : (days.indexOf(day) / (days.length - 1)) * plotW);
   const y = (value) => M.top + ((1 - value) / 2) * plotH;
 
+  // The neutral band, drawn first so everything else sits on top of it. Without
+  // it a reader has no way to know that +0.05 and -0.05 mean the same thing:
+  // "nothing much either way".
+  el('rect', {
+    x: M.left,
+    y: y(0.15),
+    width: plotW,
+    height: y(-0.15) - y(0.15),
+    style: paint({ fill: '--surface-2' }),
+    opacity: 0.7,
+  }, svg);
+
+  // Which way is up, in words rather than a number.
+  el('text', {
+    x: M.left + 6,
+    y: M.top + 13,
+    'font-size': 10,
+    'letter-spacing': '0.04em',
+    style: paint({ fill: '--text-muted' }),
+  }, svg).textContent = 'POSITIEF';
+  el('text', {
+    x: M.left + 6,
+    y: M.top + plotH - 5,
+    'font-size': 10,
+    'letter-spacing': '0.04em',
+    style: paint({ fill: '--text-muted' }),
+  }, svg).textContent = 'NEGATIEF';
+
   // Grid + y axis.
   for (const tick of [1, 0.5, 0, -0.5, -1]) {
     const yy = y(tick);
@@ -447,7 +475,7 @@ export function topicChart(container, { topics, clubs, colors, labels, topicLabe
   const rowH = 22;
   const groupGap = 14;
   const W = 900;
-  const M = { top: 8, right: 20, bottom: 30, left: 130 };
+  const M = { top: 8, right: 20, bottom: 40, left: 140 };
   const groupH = clubs.length * rowH + groupGap;
   const H = M.top + topics.length * groupH + M.bottom;
   const plotW = W - M.left - M.right;
@@ -475,24 +503,52 @@ export function topicChart(container, { topics, clubs, colors, labels, topicLabe
     }, svg);
     el('text', {
       x: xx,
-      y: H - 12,
+      y: H - 16,
       'text-anchor': 'middle',
       'font-size': 11,
       style: paint({ fill: '--text-muted' }),
     }, svg).textContent = tick === 0 ? '0' : fmt(tick);
   }
 
+  el('text', {
+    x: centre - scale(0.5),
+    y: H - 3,
+    'text-anchor': 'middle',
+    'font-size': 10,
+    'letter-spacing': '0.04em',
+    style: paint({ fill: '--text-muted' }),
+  }, svg).textContent = '← ONVREDE';
+  el('text', {
+    x: centre + scale(0.5),
+    y: H - 3,
+    'text-anchor': 'middle',
+    'font-size': 10,
+    'letter-spacing': '0.04em',
+    style: paint({ fill: '--text-muted' }),
+  }, svg).textContent = 'TEVREDENHEID →';
+
   topics.forEach((topic, ti) => {
     const groupTop = M.top + ti * groupH;
 
     el('text', {
       x: M.left - 12,
-      y: groupTop + (clubs.length * rowH) / 2 + 4,
+      y: groupTop + (clubs.length * rowH) / 2,
       'text-anchor': 'end',
       'font-size': 12,
       'font-weight': 600,
       style: paint({ fill: '--text-primary' }),
     }, svg).textContent = topicLabels[topic.topic] ?? topic.topic;
+
+    // The document count sits with the label, not only in the tooltip: a short
+    // bar built from three articles and one built from fifty look identical
+    // otherwise, and they do not carry the same weight.
+    el('text', {
+      x: M.left - 12,
+      y: groupTop + (clubs.length * rowH) / 2 + 14,
+      'text-anchor': 'end',
+      'font-size': 10,
+      style: paint({ fill: '--text-muted' }),
+    }, svg).textContent = `${topic.total} berichten`;
 
     clubs.forEach((club, ci) => {
       const entry = topic.byClub[club];

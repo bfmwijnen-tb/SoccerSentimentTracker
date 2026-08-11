@@ -74,13 +74,25 @@
             <p class="loading">Laden…</p>
           </section>
 
+          <section class="card" aria-labelledby="summary-title">
+            <header>
+              <h2 id="summary-title">Wat zegt dit?</h2>
+              <p class="sub">
+                De cijfers hierboven in gewone taal: hoe de stemming is, welke kant hij op gaat,
+                en waar de tevredenheid en de onvrede vandaan komen.
+              </p>
+            </header>
+            <div id="summary"></div>
+          </section>
+
           <section class="card" aria-labelledby="timeline-title">
             <header class="card-head">
               <div>
                 <h2 id="timeline-title">Sentiment over tijd</h2>
                 <p class="sub">
-                  Dagelijks gewogen gemiddelde, afgevlakt over een voortschrijdend venster.
-                  Stippellijnen zijn wedstrijddagen — hover voor de uitslag.
+                  Elke lijn is één club. <b>Boven de nullijn</b> wordt er overwegend positief
+                  geschreven, <b>eronder</b> overwegend negatief; de grijze band in het midden is
+                  neutraal. Stippen op de as zijn wedstrijddagen — hover voor de uitslag.
                 </p>
               </div>
               <div class="control-group">
@@ -100,7 +112,10 @@
               <header>
                 <h2 id="topics-title">Waar gaat het over</h2>
                 <p class="sub">
-                  Boos zijn over de arbitrage is iets anders dan boos zijn over de clubleiding.
+                  Per onderwerp de toon van de berichtgeving. <b>Balk naar links = onvrede</b>,
+                  <b>naar rechts = tevredenheid</b>; de lengte is hoe uitgesproken. Achter elk
+                  onderwerp staat hoeveel berichten erover gingen — een korte balk uit drie
+                  berichten zegt minder dan een korte balk uit vijftig.
                 </p>
               </header>
               <div class="chart-wrap" id="topics"></div>

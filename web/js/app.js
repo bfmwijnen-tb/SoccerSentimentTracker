@@ -141,6 +141,113 @@ function formBadge(form) {
   return `<span class="form-badge">${[...form].map((c) => `<span class="${c}">${c}</span>`).join('')}</span>`;
 }
 
+/* -------------------------------------------------------------- narrative */
+
+/**
+ * Turns the numbers into a sentence.
+ *
+ * A score of +0.28 means nothing on its own — the whole point of the dashboard
+ * is whether a fanbase is hopeful, restless or furious, and about what. The
+ * bands below are the same ones the rest of the UI colours by, so the words and
+ * the colours can never disagree.
+ */
+function moodPhrase(score, club) {
+  if (score <= -0.5) return { word: 'woedend', sentence: `Er heerst crisisstemming rond ${club}` };
+  if (score <= -0.25) return { word: 'boos', sentence: `Er wordt boos over ${club} geschreven` };
+  if (score <= -0.1) return { word: 'kritisch', sentence: `De toon over ${club} is overwegend kritisch` };
+  if (score < 0.1) return { word: 'afwachtend', sentence: `De toon over ${club} is gemengd tot neutraal` };
+  if (score < 0.3) return { word: 'tevreden', sentence: `Er wordt licht positief over ${club} geschreven` };
+  if (score < 0.55) return { word: 'hoopvol', sentence: `Er spreekt duidelijk vertrouwen uit wat er over ${club} geschreven wordt` };
+  return { word: 'euforisch', sentence: `De stemming rond ${club} is uitgelaten` };
+}
+
+function trendPhrase(delta, days) {
+  const period = `de ${days} dagen daarvoor`;
+  if (delta >= 0.15) return `Dat is een flinke stijging ten opzichte van ${period}.`;
+  if (delta >= 0.05) return `De stemming loopt op ten opzichte van ${period}.`;
+  if (delta <= -0.15) return `Maar de stemming zakt hard weg ten opzichte van ${period}.`;
+  if (delta <= -0.05) return `De stemming loopt wel terug ten opzichte van ${period}.`;
+  return `De stemming is stabiel ten opzichte van ${period}.`;
+}
+
+/**
+ * A topic only earns a mention when enough was written about it. One furious
+ * article about the referee is not "waar de onvrede over gaat".
+ */
+const TOPIC_MIN_DOCUMENTS = 5;
+
+function renderSummary(overview, topicRows) {
+  const host = $('#summary');
+  const labels = clubLabels();
+  const byClub = new Map(overview.map((row) => [row.club, row]));
+  const ids = activeClubs();
+
+  if (ids.length === 0) {
+    host.innerHTML = '<p class="loading">Selecteer minstens één club.</p>';
+    return;
+  }
+
+  host.innerHTML = ids
+    .map((id) => {
+      const row = byClub.get(id);
+      if (!row || row.documents === 0) {
+        return `
+          <div class="summary-row">
+            <span class="who"><span class="dot" style="background:${colorFor(id)}"></span>${escapeHtml(labels[id])}</span>
+            <p>Geen berichten in deze periode gevonden, dus hierover valt niets te zeggen.</p>
+          </div>`;
+      }
+
+      const mood = moodPhrase(row.score, labels[id]);
+      const trend = trendPhrase(row.delta, state.days);
+
+      const mine = topicRows
+        .filter((t) => t.club === id && t.documents >= TOPIC_MIN_DOCUMENTS)
+        .sort((a, b) => a.score - b.score);
+      const worst = mine[0];
+      const best = mine[mine.length - 1];
+
+      const topicLabel = (t) => escapeHtml(state.meta.topics[t.topic] ?? t.topic);
+
+      const parts = [];
+      if (worst && worst.score < -0.05) {
+        parts.push(
+          `De meeste onvrede gaat over <b>${topicLabel(worst)}</b> (${fmt(worst.score)}, ${worst.documents} berichten).`,
+        );
+      }
+      if (best && best.score > 0.05 && best !== worst) {
+        parts.push(
+          `Het meest positief wordt geschreven over <b>${topicLabel(best)}</b> (${fmt(best.score)}, ${best.documents} berichten).`,
+        );
+      }
+      if (parts.length === 0 && mine.length > 0) {
+        parts.push('Geen enkel onderwerp springt er duidelijk positief of negatief uit.');
+      }
+
+      const volatility = Number(row.volatility);
+      const swingNote =
+        volatility >= 0.35
+          ? ' Van dag tot dag schommelt het sterk.'
+          : volatility <= 0.15
+            ? ' Van dag tot dag blijft het opvallend vlak.'
+            : '';
+
+      return `
+        <div class="summary-row">
+          <span class="who">
+            <span class="dot" style="background:${colorFor(id)}"></span>
+            ${escapeHtml(labels[id])}
+            <b class="mood" style="color:${polarityColor(row.score)}">${mood.word}</b>
+          </span>
+          <p>
+            ${mood.sentence}, gemeten over ${row.documents} berichten. ${trend}${swingNote}
+            ${parts.join(' ')}
+          </p>
+        </div>`;
+    })
+    .join('');
+}
+
 /* ------------------------------------------------------------------ tiles */
 
 function renderTiles(overview) {
@@ -680,6 +787,7 @@ const LOADERS = {
       api('/api/sources'),
     ]);
     renderTiles(overview);
+    renderSummary(overview, topics);
     renderTimeline(timeline, markers);
     renderTopics(topics);
     renderDivergence(divergence);

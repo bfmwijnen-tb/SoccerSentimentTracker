@@ -150,6 +150,47 @@ where both agree, and the **Media versus fans** panel exists to surface exactly 
 Out of the box you only get the media half. That is a real limitation, stated plainly on the
 dashboard rather than hidden.
 
+### Turning on the fan sources
+
+Reddit is the one worth doing — it is what turns "media tone" into actual fan sentiment and
+lights up the Media-versus-fans panel. Roughly two minutes:
+
+**Reddit** (free, no approval needed)
+
+1. Sign in and go to <https://www.reddit.com/prefs/apps>
+2. **create another app...** at the bottom
+3. Name it anything, pick **script**, set redirect URI to `http://localhost:8787`
+4. **create app**
+5. Copy the string under the app name (that is the client ID) and the **secret**
+
+**YouTube** (free, most Dutch-language source)
+
+1. <https://console.cloud.google.com/> → create a project
+2. **APIs & Services → Library** → enable **YouTube Data API v3**
+3. **Credentials → Create credentials → API key** → copy it
+
+**Bluesky** (free; only needed if anonymous requests are refused, which is normal on a server)
+
+1. <https://bsky.app/settings/app-passwords> → **Add App Password**
+2. Copy it. Your identifier is your handle, e.g. `you.bsky.social`
+
+Then put them where the tracker runs:
+
+*Running locally* — copy `.env.example` to `.env` and fill in the values:
+
+```bash
+cp .env.example .env      # then edit .env
+npm run collect           # fan sources now included
+```
+
+*Running on GitHub Actions* — add them as repository secrets under
+**Settings → Secrets and variables → Actions → New repository secret**, using exactly these
+names: `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, `YOUTUBE_API_KEY`, `BLUESKY_IDENTIFIER`,
+`BLUESKY_APP_PASSWORD`. The workflow picks up whichever are set and skips the rest.
+
+Nothing breaks if you set none of them — you just keep measuring media tone only, which the
+dashboard says plainly rather than pretending otherwise.
+
 ### Why some sources need credentials
 
 Reddit and Bluesky both refuse anonymous requests from datacenter IPs — an anti-bot measure
